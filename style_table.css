@@ -1,0 +1,268 @@
+body {
+    font-family: 'Poppins', sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f4f4f4;
+    text-align: center;
+    font-size: 0.9em;
+}
+#sortOptionsPopup {
+    display: none; /* Hidden by default */
+    position: absolute; /* Positioned relative to the page or nearest positioned ancestor */
+    border: 1px solid #ccc;
+    background-color: white;
+    padding: 15px;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    z-index: 10; /* Make sure it's above other elements */
+    min-width: 180px; /* Ensure enough space for buttons */
+}
+
+#closeSortPopup img {
+    display: block; /* Prevents extra space below the image */
+    width: 18px;    /* Set desired width */
+    height: 18px;   /* Set desired height */
+}
+
+#sortOptionsPopup p {
+    margin: 0 0 10px 0;
+}
+
+#sortOptionsPopup button {
+    margin-top: 5px;
+    padding: 5px 10px;
+    width: 100%; /* Make buttons fill the width */
+    cursor: pointer;
+}
+#closeSortPopup {
+    position: absolute; /* Position relative to the popup */
+    top: 5px;         /* Distance from the top edge */
+    right: 10px;        /* Distance from the right edge */
+    font-size: 1.4em;   /* Make it a bit larger */
+    font-weight: bold;
+    color: #555;       /* Dim color */
+    cursor: pointer;
+    line-height: 1;   /* Adjust line height for better vertical centering */
+}
+
+#closeSortPopup:hover {
+    color: #000;       /* Darken on hover */
+}
+table {
+    border-collapse: collapse;
+    width: 80%;
+    margin: auto;
+}
+.table {
+    max-height: 80vh;
+    overflow-y: auto;
+    border-radius: 10px;
+    border: 5px dashed #999;
+}
+thead{
+    position: sticky;
+    top:0;
+    z-index:1;
+}
+th, td {
+    border: 1px solid black;
+    padding: 8px;
+    text-align: left;
+}
+tr.virtual-row td {
+  color: red;
+  font-weight: bold;
+}
+
+th {
+    background-color: #007bff;
+    color: white;
+}
+tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+/* Légende principale */
+legend {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #007bff;
+    padding: 5px 10px;
+    border-radius: 10px;
+    background-color: #e6f0ff;
+    border: 1px solid #007bff;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+
+.select-list {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 5px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+    overflow-wrap: break-word;
+}
+
+@media (max-width: 600px) {
+    .select-list {
+        grid-template-columns: repeat(2, 1fr); /* Adjust to 3 columns for smaller screens */
+    }
+}
+
+@media (max-width: 400px) {
+    .select-list {
+        grid-template-columns: 1fr; /* Adjust to 1 column for very small screens */
+    }
+}
+        /* Style pour le bouton */
+        .button {
+            font-size: 16px;
+            transition: all 0.3s ease-in-out;
+            text-align: center;
+            position: relative;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            height: 45px;
+            width: 15%;
+            border-radius: 30px;
+        }
+
+        .button1 {
+            font-size: 16px;
+            transition: all 0.3s ease-in-out;
+            text-align: center;
+            position: relative;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            height: 45px;
+            width: 15%;
+            border-radius: 30px;
+        }
+
+        .button2 {
+            font-size: 16px;
+            transition: all 0.3s ease-in-out;
+            text-align: center;
+            position: relative;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            height: 45px;
+            width: 15%;
+            border-radius: 30px;
+        }
+            /* Media query for tablets */
+    @media (max-width: 1000px) {
+        .button {
+            width: 25%; /* Increase button width for tablets */
+        }
+        .button1{
+            width: 25%;
+        }
+        .button2{
+            width:20%;
+        }
+    }
+
+    /* Media query for mobile devices */
+    @media (max-width: 700px) {
+        .button {
+            width: 30%; /* Increase button width for mobile */
+            height: 40px; /* Slightly smaller height */
+            margin: 5px 0;
+            font-size: 13px;
+        }
+        .button1 {
+            width: 30%; /* Increase button width for mobile */
+            height: 40px; /* Slightly smaller height */
+            margin: 5px 0;
+            font-size: 13px;
+        }
+        .button2 {
+                width: 40%; /* Increase button width for mobile */
+                height: 40px; /* Slightly smaller height */
+                margin: 5px 0;
+                font-size: 13px;
+        }
+    }
+
+    @media (max-width: 450px) {
+            .button {
+                width: 50%; /* Increase button width for mobile */
+                height: 40px; /* Slightly smaller height */
+                margin: 5px 0;
+                font-size: 13px;
+            }
+            .button2 {
+                width: 49%; /* Increase button width for mobile */
+                height: 40px; /* Slightly smaller height */
+                margin: 5px 0;
+                font-size: 13px;
+            }
+        }
+
+    @media (max-width: 550px) {
+            .button1 {
+                width: 49%; /* Increase button width for mobile */
+                height: 40px; /* Slightly smaller height */
+                margin: 5px 0;
+                font-size: 13px;
+            }
+        }
+
+        /* Style pour l'info-bulle */
+        .tooltip {
+            visibility: hidden;
+            width: 250px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 5px;
+            padding: 5px;
+            position: absolute;
+            bottom: 120%; /* Position sous l'élément */
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        /* Petite flèche sous l'info-bulle */
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+        }
+
+        /* Afficher l'info-bulle au survol */
+        button:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+input[type="text"] {
+    width: 100%; /* Prend toute la largeur de son conteneur */
+    min-width: 40px;
+    padding: 10px; /* Ajoute un peu d'espace à l'intérieur de l'input */
+    border: 1px solid #ccc; /* Bordure grise claire */
+    border-radius: 4px; /* Coins arrondis */
+    box-sizing: border-box; /* Inclut le padding et la bordure dans la largeur totale */
+    font-size: 12px; /* Taille de police */
+    transition: border-color 0.3s; /* Transition douce pour le changement de couleur de bordure */
+}
+
+input[type="text"]:focus {
+    border-color: #007BFF; /* Change la couleur de la bordure au focus */
+    outline: none; /* Supprime le contour par défaut */
+}

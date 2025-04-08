@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navigation App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav>
+        <!-- Logo is now a direct child -->
+        <img src="Costech.jpg" alt="Costech Logo" class="logo">
+
+        <!-- Container for the main page links -->
+        <div class="nav-links-container">
+            <a id="home" data-page="pagehome.html" onclick="loadPage(this)" class="main-nav hidden">Home</a>
+            <a id="similarity" data-page="similarity.html" onclick="loadPage(this)" class="main-nav hidden">Display Patients</a>
+            <a id="result_similar" data-page="result_similar.html" onclick="loadPage(this)" class="main-nav hidden">Compute Closest</a>
+            <a id="virtual" data-page="virtual.html" onclick="loadPage(this)" class="main-nav hidden">Select values</a>
+            <a id="result_virtual" data-page="result_virtual.html" onclick="loadPage(this)" class="main-nav hidden">Explore Hypothesis</a>
+        </div>
+
+        <!-- Container for user-specific controls -->
+        <div class="user-controls">
+            <span id="loggedInUserDisplay" class="hidden"></span>
+            <a id="logoutLink" onclick="logout()" class="hidden">Logout</a>
+        </div>
+    </nav>
+
+
+    <!-- The iframe where content pages will be loaded -->
+    <iframe id="content" src="" name="contentFrame"></iframe> <!-- Initially empty src -->
+
+    <script>
+        const contentFrame = document.getElementById("content");
+        const mainNavLinks = document.querySelectorAll("nav a.main-nav");
+        const logoutLink = document.getElementById("logoutLink");
+        const loggedInUserDisplay = document.getElementById("loggedInUserDisplay");
+
+        // --- Added: Backend URL ---
+        // Make sure this matches the URL and port of your running backend server
+        const BACKEND_URL = 'http://localhost:3000';
+
+        /**
+         * Updates the visibility of navigation elements based on login status.
+         * @param {boolean} isLoggedIn - Whether the user is currently logged in.
+         * @param {string} [username=''] - The username if logged in.
+         */
+        function setNavState(isLoggedIn, username = '') {
+            console.log(`Setting nav state: isLoggedIn=${isLoggedIn}, user=${username}`);
+
+            mainNavLinks.forEach(link => link.classList.toggle('hidden', !isLoggedIn));
+            logoutLink.classList.toggle('hidden', !isLoggedIn);
+            loggedInUserDisplay.classList.toggle('hidden', !isLoggedIn);
+
+             if (isLoggedIn && username) {
+                 loggedInUserDisplay.textContent = `User: ${username}`;
+             } else {
+                 loggedInUserDisplay.textContent = '';
+             }
+        }
+
+        /**
+         * Loads a page into the iframe and ensures the 'setUser' message is sent.
+         * Handles navigation link styling.
+         * @param {HTMLAnchorElement} linkElement - The navigation link element that was clicked or identified.
+         */
+        function loadPage(linkElement) {
+            if (!linkElement) {
+                console.error("loadPage called without a valid link element.");
+                return;
+            }
+            const page = linkElement.getAttribute('data-page');
+             // Check login status directly from sessionStorage (which should be updated by checkAuthStatus or onLoginSuccess)
+            const isLoggedIn = sessionStorage.getItem('isLoggedIn') === 'true';
+            const currentUser = sessionStorage.getItem('loggedInUser'); // Get username for message
+
+            // Check if trying to access a protected page while logged out
+            // Redirect to login page if trying to access a main-nav link and not logged in
+            if (!isLoggedIn && linkElement.classList.contains('main-nav')) {
+                console.log("Access denied. User not logged in. Redirecting to login.");
+                setNavState(false); // Ensure nav reflects logged-out state
+                mainNavLinks.forEach(link => link.classList.remove("active")); // Clear active state
+                contentFrame.src = 'login.html'; // Load login page directly
+                return;
+            }
+
+            if (contentFrame && page) {
+                console.log(`Requesting to load page: ${page}`);
+
+                // --- IMPORTANT: Attach onload BEFORE setting src ---
+                contentFrame.onload = () => {
+                     console.log(`Iframe finished loading: ${page}`);
+                     // Send 'setUser' message only if logged in and target is not login page
+                     if (isLoggedIn && currentUser && page !== 'login.html' && contentFrame.contentWindow) {
+                         console.log(`Notifying iframe ${page} that user is ${currentUser}`);
+                         // Use specific origin in production instead of '*'
+                         contentFrame.contentWindow.postMessage({ action: 'setUser', username: currentUser }, '*');
+                     } else {
+                        console.log(`Not sending 'setUser' to ${page} (User: ${currentUser}, isLoggedIn: ${isLoggedIn})`);
+                     }
+                     // Prevent this specific onload from firing again if the iframe content reloads itself
+                     contentFrame.onload = null;
+                 };
+                 // --- END IMPORTANT ---
+
+                // Now set the source, triggering the load and eventually the onload handler
+                contentFrame.src = page;
+
+                // Update navigation link styles
+                mainNavLinks.forEach(link => link.classList.remove("active"));
+                // Add 'active' class only to main navigation links
+                if (linkElement.classList.contains('main-nav')) {
+                    linkElement.classList.add("active");
+                }
+
+            } else {
+                console.error("Iframe #content not found or page attribute missing for element:", linkElement);
+            }
+        }
+
+        /**
+         * Handles successful login event triggered by a message from login.html.
+         * @param {string} username - The username of the logged-in user.
+         */
+        function onLoginSuccess(username) {
+             console.log(`Login successful message received for: ${username}`);
+             // Session storage items are already set by login.html upon successful backend login
+
+             setNavState(true, username); // Update nav bar visibility and display username
+
+             const homeLink = document.getElementById('home');
+             if (homeLink) {
+                 console.log("Loading home page after login...");
+                 loadPage(homeLink); // Load the default home page
+             } else {
+                 console.error("Home link (id='home') not found after login.");
+                 contentFrame.src = 'about:blank'; // Fallback
+             }
+        }
+
+        /**
+         * Handles user logout.
+         * **NEW:** Calls backend logout endpoint first.
+         */
+        async function logout() { // --- Made async ---
+            const loggedInUser = sessionStorage.getItem('loggedInUser'); // Get user before clearing
+            console.log(`User logging out: ${loggedInUser || '(unknown)'}`);
+
+            try {
+                 // --- NEW: Call backend logout endpoint ---
+                 const response = await fetch(`${BACKEND_URL}/api/auth/logout`, {
+                    method: 'POST',
+                    credentials: 'include' // IMPORTANT: Send the session cookie
+                 });
+
+                 if (response.ok) {
+                    console.log("Backend session destroyed successfully.");
+                 } else {
+                    const result = await response.json();
+                    console.warn("Backend logout failed:", result.message || response.statusText);
+                    // Continue with frontend logout anyway, but log the warning
+                 }
+            } catch (error) {
+                 console.error("Network error during logout:", error);
+                 // Continue with frontend logout, but maybe warn the user
+                 alert("Logout request failed. Please check your connection. Logging out locally.");
+            }
+
+            // --- Clear frontend state ---
+            sessionStorage.removeItem('isLoggedIn');
+            sessionStorage.removeItem('loggedInUser');
+
+            setNavState(false); // Update nav to logged-out state
+            mainNavLinks.forEach(link => link.classList.remove("active")); // Clear active state
+
+            console.log("Loading login page after logout...");
+            contentFrame.src = 'login.html'; // Load login page directly
+
+            console.log(`User ${loggedInUser || '(unknown)'} logged out from frontend.`);
+        }
+
+        /**
+         * Listens for messages from child iframes (login status, navigation requests).
+         */
+        window.addEventListener('message', (event) => {
+             // TODO: Add origin check for security in production
+             // if (event.origin !== 'your-expected-origin' && event.origin !== 'null') { // Allow 'null' for file:// protocol if needed for dev
+             //    console.warn("Message received from unexpected origin:", event.origin);
+             //    return;
+             // }
+
+            if (!event.data || !event.data.action) {
+                return; // Ignore messages without an action
+            }
+
+            console.log("Message received from iframe:", event.data);
+
+            switch(event.data.action) {
+                case 'loginSuccess':
+                    onLoginSuccess(event.data.username);
+                    break;
+                case 'requestNavigation':
+                    const targetPage = event.data.targetPage;
+                    const targetId = event.data.targetId;
+                    const linkElement = document.getElementById(targetId);
+
+                    if (linkElement && linkElement.getAttribute('data-page') === targetPage) {
+                         console.log(`Processing navigation request to ${targetPage} via link #${targetId}`);
+                         loadPage(linkElement);
+                    } else {
+                        console.error(`Navigation request failed: Could not find link element with id '${targetId}' for page '${targetPage}' or data-page mismatch.`);
+                    }
+                    break;
+                default:
+                    console.log("Received unhandled message action:", event.data.action);
+            }
+        });
+
+        /**
+         * --- NEW: Function to check auth status with the backend ---
+         * @returns {Promise<{isLoggedIn: boolean, username: string|null}>}
+         */
+        async function checkAuthStatus() {
+            console.log("Checking authentication status with backend...");
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/auth/status`, {
+                    method: 'GET',
+                    credentials: 'include' // Send cookies
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log("Auth status received:", data);
+                    // Update sessionStorage based on backend response
+                    if (data.isLoggedIn) {
+                        sessionStorage.setItem('isLoggedIn', 'true');
+                        sessionStorage.setItem('loggedInUser', data.username);
+                    } else {
+                        sessionStorage.removeItem('isLoggedIn');
+                        sessionStorage.removeItem('loggedInUser');
+                    }
+                    return data; // { isLoggedIn: boolean, username: string|null }
+                } else {
+                     console.error("Failed to check auth status, status code:", response.status);
+                     // Treat as logged out if status check fails
+                     sessionStorage.removeItem('isLoggedIn');
+                     sessionStorage.removeItem('loggedInUser');
+                    return { isLoggedIn: false, username: null };
+                }
+            } catch (error) {
+                console.error("Network error checking auth status:", error);
+                // Treat as logged out on network error
+                sessionStorage.removeItem('isLoggedIn');
+                sessionStorage.removeItem('loggedInUser');
+                return { isLoggedIn: false, username: null };
+            }
+        }
+
+
+        /**
+         * Initial setup when the main index page loads or is refreshed.
+         * **MODIFIED:** Calls checkAuthStatus first.
+         */
+        window.onload = async function () { // --- Made async ---
+            console.log("Index page loaded. Initializing...");
+
+            // --- MODIFIED: Check backend first ---
+            const authStatus = await checkAuthStatus();
+            const isLoggedIn = authStatus.isLoggedIn;
+            const currentUser = authStatus.username;
+
+            setNavState(isLoggedIn, currentUser); // Set initial nav visibility based on verified status
+
+            const currentIframeSrc = contentFrame.getAttribute('src');
+            const currentIframePage = currentIframeSrc ? currentIframeSrc.split('/').pop() : null;
+            console.log(`Initial check result: isLoggedIn=${isLoggedIn}, user=${currentUser}, currentIframePage=${currentIframePage}`);
+
+            if (isLoggedIn) {
+                 const homeLink = document.getElementById('home');
+                 if (!homeLink) {
+                    console.error("CRITICAL: Home link (id='home') not found on initial load!");
+                    contentFrame.src = 'about:blank';
+                    return;
+                 }
+
+                 let needsInitialLoad = true;
+
+                 // Check if a valid main page is already loaded (e.g., after refresh)
+                 if (currentIframePage && currentIframePage !== 'login.html') {
+                     let isKnownMainPage = false;
+                     mainNavLinks.forEach(link => {
+                         if(link.getAttribute('data-page') === currentIframePage) {
+                             isKnownMainPage = true;
+                             console.log(`Page ${currentIframePage} seems already loaded. Activating link and ensuring user context.`);
+                             link.classList.add('active'); // Activate the correct link
+
+                             // Attach onload to send message AFTER the iframe reloads/refreshes
+                             contentFrame.onload = () => {
+                                 if (currentUser && contentFrame.contentWindow) {
+                                     console.log(`Notifying refreshed iframe ${currentIframePage} that user is ${currentUser}`);
+                                     contentFrame.contentWindow.postMessage({ action: 'setUser', username: currentUser }, '*');
+                                 }
+                                 contentFrame.onload = null; // Reset handler
+                             };
+                             needsInitialLoad = false;
+                         }
+                     });
+                      if (!isKnownMainPage) {
+                          console.log(`Current iframe page ${currentIframePage} is not a known main page. Will load home.`);
+                          needsInitialLoad = true;
+                      }
+                 }
+
+                 // If no valid page is loaded, or it was login.html, load the home page
+                 if (needsInitialLoad || currentIframePage === 'login.html') {
+                    console.log("Loading initial page (home) for logged-in user.");
+                    loadPage(homeLink); // Use loadPage which handles the 'setUser' message
+                 } else if (currentIframePage && currentIframePage !== 'login.html') {
+                    // If a page was already loaded and is known, we might still need to send setUser
+                    // This happens if the onload handler above wasn't set quickly enough or
+                    // if the iframe didn't fully reload on page refresh.
+                    // Send the message directly if the contentWindow exists.
+                    if (contentFrame.contentWindow && currentUser) {
+                         console.log(`Sending 'setUser' to already loaded page ${currentIframePage}`);
+                         contentFrame.contentWindow.postMessage({ action: 'setUser', username: currentUser }, '*');
+                    }
+                 }
+
+            } else {
+                 // Not logged in, ensure login page is shown
+                 console.log("User not logged in. Ensuring login page is loaded.");
+                 if (currentIframePage !== 'login.html') {
+                    contentFrame.src = 'login.html'; // Load login page directly
+                 }
+                 mainNavLinks.forEach(link => link.classList.remove("active")); // Ensure no active links
+            }
+            console.log("Index page initialization complete.");
+        };
+    </script>
+</body>
+</html>

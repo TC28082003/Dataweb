@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login / Sign Up</title>
+    <style>
+        /* --- Your existing CSS styles remain exactly the same --- */
+        /* --- Paste all your CSS rules from the original login.html here --- */
+        :root {
+            --primary-color: #007bff;
+            --primary-hover-color: #0056b3;
+            --success-color: #28a745;
+            --success-bg-color: #d4edda;
+            --success-border-color: #c3e6cb;
+            --error-color: #dc3545;
+            --error-bg-color: #f8d7da;
+            --error-border-color: #f5c6cb;
+            --light-gray-color: #f8f9fa;
+            --medium-gray-color: #ced4da;
+            --dark-gray-color: #495057;
+            --text-color: #333;
+            --body-bg-color: #eef2f7; /* Light background for the page */
+            --container-bg-color: #ffffff;
+            --input-border-color: #ced4da;
+            --input-focus-border-color: var(--primary-color);
+            --input-focus-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+
+        /* Global Styles */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: var(--body-bg-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh; /* Use 100vh for full viewport height */
+            padding: 20px; /* Add padding for smaller screens */
+        }
+
+        /* Container Styling */
+        .login-container {
+            background-color: var(--container-bg-color);
+            padding: 35px 45px; /* Slightly adjusted padding */
+            border-radius: 12px; /* Softer corners */
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            width: 100%; /* Responsive width */
+            max-width: 420px; /* Slightly wider max width */
+            text-align: center;
+            overflow: hidden; /* Hide overflow for potential animations */
+        }
+
+        .login-container h2 {
+            margin-bottom: 25px;
+            color: var(--primary-color);
+            font-weight: 600;
+            font-size: 1.8em; /* Larger heading */
+        }
+
+        /* Form Styling */
+        form {
+            width: 100%;
+            transition: opacity 0.3s ease-in-out; /* For potential toggle effects */
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+            position: relative; /* For potential icon positioning */
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--dark-gray-color);
+            font-size: 0.95em;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px; /* More padding */
+            border: 1px solid var(--input-border-color);
+            border-radius: 8px; /* Softer corners for inputs */
+            font-size: 1em;
+            font-family: 'Poppins', sans-serif;
+            color: var(--text-color);
+            transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+        }
+        /* Add focus effect */
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--input-focus-border-color);
+            box-shadow: var(--input-focus-shadow);
+        }
+        /* Style placeholders */
+        .form-group input::placeholder {
+            color: var(--medium-gray-color);
+            opacity: 0.8;
+        }
+
+        /* Button Styling (replaces button-base definition) */
+        .button-base {
+            width: 100%;
+            padding: 12px 15px;
+            margin-top: 15px; /* Space above button */
+            font-size: 1.05em;
+            font-weight: 500;
+            color: #fff;
+            background-color: var(--primary-color);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease;
+            text-transform: uppercase; /* Optional: Uppercase text */
+            letter-spacing: 0.5px; /* Optional: Letter spacing */
+        }
+        .button-base:hover:not(:disabled) { /* Don't change style if disabled */
+            background-color: var(--primary-hover-color);
+        }
+        .button-base:active:not(:disabled) {
+            transform: scale(0.98); /* Slight press effect */
+        }
+        /* Style for disabled button */
+        .button-base:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        /* Message Styling */
+        .message {
+            margin-top: 20px;
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.95em;
+            border: 1px solid transparent;
+            display: none; /* Keep hidden initially */
+            text-align: left; /* Align message text left */
+            position: relative; /* For icon positioning */
+            padding-left: 40px; /* Space for icon */
+            word-wrap: break-word; /* Wrap long messages */
+        }
+        /* Add icons using pseudo-elements */
+        .message::before {
+            content: ''; /* Add icon content via specific classes */
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-weight: 900; /* Requires Font Awesome or similar */
+            font-size: 1.1em;
+        }
+
+        /* Toggle Link Styling */
+        .toggle-link {
+            margin-top: 25px;
+            color: var(--primary-color);
+            cursor: pointer;
+            text-decoration: none; /* Remove default underline */
+            font-weight: 500;
+            display: inline-block; /* Allows better spacing/hover */
+            transition: color 0.2s ease;
+        }
+        .toggle-link:hover {
+            color: var(--primary-hover-color);
+            text-decoration: underline; /* Underline on hover */
+        }
+
+        /* Signup Form Initial State */
+        #signupForm {
+            display: none;
+        }
+         /* Note Styling */
+         #signupForm p.signup-note { /* More specific selector */
+            font-size: 0.85em;
+            color: #6c757d; /* Bootstrap muted color */
+            margin-bottom: 15px;
+            text-align: center;
+         }
+         /* Password help text styling */
+         small#passwordHelp {
+            display: block; /* Make it block to take full width below input */
+            color: var(--error-color);
+            margin-top: 5px;
+            font-size: 0.8em;
+            text-align: left;
+         }
+
+    </style>
+    <!-- If using Font Awesome for icons, add the kit link here -->
+    <!-- Example: <script src="https://kit.fontawesome.com/your-kit-code.js" crossorigin="anonymous"></script> -->
+</head>
+<body>
+    <div class="login-container">
+        <!-- Login Form -->
+        <form id="loginForm">
+            <h2>Login</h2>
+            <!-- Message div placed BEFORE inputs -->
+            <div id="loginMessage" class="message"></div>
+            <div class="form-group">
+                <label for="loginUsername">Username</label>
+                <input type="text" id="loginUsername" placeholder="Enter your username" required>
+            </div>
+            <div class="form-group">
+                <label for="loginPassword">Password</label>
+                <input type="password" id="loginPassword" placeholder="Enter your password" required>
+            </div>
+            <button type="submit" class="button-base">Login</button>
+            <p class="toggle-link" onclick="toggleForms()">Need an account? Sign Up</p>
+        </form>
+
+        <!-- Sign Up Form -->
+        <form id="signupForm">
+            <h2>Sign Up</h2>
+            <p class="signup-note">(Passwords are securely stored)</p> <!-- Updated note -->
+            <!-- Message div placed BEFORE inputs -->
+            <div id="signupMessage" class="message"></div>
+            <div class="form-group">
+                <label for="signupUsername">Username</label>
+                <input type="text" id="signupUsername" placeholder="Choose a username" required>
+            </div>
+            <div class="form-group">
+                <label for="signupPassword">Password</label>
+                <input type="password" id="signupPassword" placeholder="Create a password (min 4 chars)" required>
+                 <!-- Password validation message area -->
+                 <small id="passwordHelp"></small> <!-- Initially empty -->
+            </div>
+            <button type="submit" class="button-base">Sign Up</button>
+            <p class="toggle-link" onclick="toggleForms()">Already have an account? Login</p>
+        </form>
+    </div>
+
+    <script>
+        // --- Constants ---
+        // Define the base URL of your backend server
+        // Make sure this matches the host and port your backend (server.js) is running on
+        const BACKEND_URL = 'http://localhost:3000'; // Adjust if your backend runs elsewhere
+
+        // --- DOM Elements ---
+        const loginForm = document.getElementById('loginForm');
+        const signupForm = document.getElementById('signupForm');
+        const loginMessage = document.getElementById('loginMessage');
+        const signupMessage = document.getElementById('signupMessage');
+        const signupPasswordInput = document.getElementById('signupPassword');
+        const passwordHelp = document.getElementById('passwordHelp');
+
+        // --- UI Helper Functions ---
+
+        /**
+         * Displays a message in a designated element.
+         * @param {HTMLElement} element - The message container element.
+         * @param {string} message - The text message to display.
+         * @param {boolean} [isError=false] - True for error styling, false for success.
+         */
+        function displayMessage(element, message, isError = false) {
+            element.textContent = message;
+            // Add appropriate class based on error status
+            element.className = `message ${isError ? 'error-message' : 'success-message'}`;
+            element.style.display = 'block'; // Make it visible
+        }
+
+        /**
+         * Hides and clears all message elements and related error styling.
+         */
+        function clearMessages() {
+            loginMessage.style.display = 'none';
+            loginMessage.textContent = ''; // Clear text content
+            loginMessage.className = 'message'; // Reset class
+
+            signupMessage.style.display = 'none';
+            signupMessage.textContent = '';
+            signupMessage.className = 'message';
+
+            passwordHelp.textContent = ''; // Clear password help text
+            passwordHelp.style.display = 'none'; // Hide it
+
+            // Reset password input border if it was styled for error
+            signupPasswordInput.style.borderColor = ''; // Reset to CSS default
+            document.getElementById('loginPassword').style.borderColor = ''; // Also reset login password border
+            document.getElementById('loginUsername').style.borderColor = '';
+            document.getElementById('signupUsername').style.borderColor = '';
+        }
+
+        function toggleForms() {
+            clearMessages(); // Clear messages when switching forms
+            // Re-enable buttons that might have been disabled
+            loginForm.querySelector('button').disabled = false;
+            signupForm.querySelector('button').disabled = false;
+
+            if (loginForm.style.display === 'none') {
+                loginForm.style.display = 'block';
+                signupForm.style.display = 'none';
+            } else {
+                loginForm.style.display = 'none';
+                signupForm.style.display = 'block';
+            }
+        }
+
+        // --- Event Handlers ---
+
+        /**
+         * Handles the login form submission.
+         * Sends credentials to the backend API.
+         */
+        loginForm.addEventListener('submit', async (event) => { // Use async for await
+            event.preventDefault();
+            clearMessages();
+            const usernameInput = document.getElementById('loginUsername');
+            const passwordInput = document.getElementById('loginPassword');
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+            const button = loginForm.querySelector('button');
+
+            let hasError = false;
+            if (!username) {
+                displayMessage(loginMessage, "Username is required.", true);
+                usernameInput.style.borderColor = 'var(--error-color)';
+                hasError = true;
+            }
+            if (!password) {
+                 // Append message if username is also missing
+                displayMessage(loginMessage, loginMessage.textContent + (hasError ? "\n" : "") + "Password is required.", true);
+                passwordInput.style.borderColor = 'var(--error-color)';
+                hasError = true;
+            }
+
+            if (hasError) return; // Stop if client-side validation fails
+
+            button.disabled = true; // Disable button during request
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include' // IMPORTANT: Send session cookies
+                });
+
+                const result = await response.json(); // Always try to parse JSON
+
+                if (response.ok) { // Check if status code is 200-299
+                    console.log("Login successful for:", result.username);
+                    displayMessage(loginMessage, "Login successful! Loading application...", false);
+
+                    // Store login state for the parent window (index.html)
+                    // sessionStorage is temporary and cleared when the browser tab closes
+                    sessionStorage.setItem('isLoggedIn', 'true');
+                    sessionStorage.setItem('loggedInUser', result.username);
+
+                    // Notify parent window (index.html) about successful login
+                    // Use a specific origin instead of '*' in production for security
+                    window.parent.postMessage({ action: 'loginSuccess', username: result.username }, '*');
+                    // Button remains disabled as the page context will change
+
+                } else {
+                    // Handle errors (e.g., 400, 401, 500)
+                    console.error("Login failed:", result.message);
+                    displayMessage(loginMessage, result.message || "Login failed. Please check credentials.", true);
+                    button.disabled = false; // Re-enable button on failure
+                }
+            } catch (error) {
+                // Handle network errors or cases where fetch fails
+                console.error("Network or fetch error during login:", error);
+                displayMessage(loginMessage, "Login failed. Could not connect to the server.", true);
+                button.disabled = false; // Re-enable button on error
+            }
+        });
+
+        signupForm.addEventListener('submit', async (event) => { // Use async for await
+            event.preventDefault();
+            clearMessages();
+            const usernameInput = document.getElementById('signupUsername');
+            const username = usernameInput.value.trim();
+            const password = signupPasswordInput.value;
+            const button = signupForm.querySelector('button');
+
+             let hasError = false;
+             // Client-side validation
+             if (!username) {
+                displayMessage(signupMessage, "Username cannot be empty.", true);
+                usernameInput.style.borderColor = 'var(--error-color)';
+                hasError = true;
+             }
+             if (!password) {
+                displayMessage(signupMessage, signupMessage.textContent + (hasError ? "\n" : "") + "Password cannot be empty.", true);
+                 signupPasswordInput.style.borderColor = 'var(--error-color)';
+                 hasError = true;
+             } else if (password.length < 4) {
+                 // Specific password length validation
+                 displayMessage(signupMessage, "Password must be at least 4 characters long.", true);
+                 passwordHelp.textContent = "Password must be at least 4 characters.";
+                 passwordHelp.style.display = 'block';
+                 signupPasswordInput.style.borderColor = 'var(--error-color)';
+                 hasError = true;
+             }
+
+             if(hasError) return; // Stop if client-side validation fails
+
+
+            button.disabled = true; // Disable button during request
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/auth/signup`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include' // Include credentials if needed by backend CORS setup
+                });
+
+                const result = await response.json(); // Always try to parse JSON
+
+                if (response.status === 201) { // 201 Created - Success
+                    displayMessage(signupMessage, "Sign up successful! You can now log in.", false);
+                    // Optional: Briefly disable form, then switch to login view
+                    setTimeout(() => {
+                        toggleForms();
+                    }, 1500); // Switch after 1.5 seconds
+                } else {
+                    console.error("Signup failed:", result.message);
+                    displayMessage(signupMessage, result.message || "Sign up failed. Please try again.", true);
+                     if (response.status === 409) { // Username already exists
+                        usernameInput.style.borderColor = 'var(--error-color)';
+                     }
+                    button.disabled = false; // Re-enable button on failure
+                }
+            } catch (error) {
+                // Handle network errors or cases where fetch fails
+                console.error("Network or fetch error during signup:", error);
+                displayMessage(signupMessage, "Signup failed. Could not connect to the server.", true);
+                button.disabled = false; // Re-enable button on error
+            }
+        });
+
+        // --- Initial Setup ---
+        clearMessages(); // Ensure messages are hidden on page load
+        loginForm.querySelector('button').disabled = false; // Ensure buttons are enabled initially
+        signupForm.querySelector('button').disabled = false;
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual sort</title>
+    <link rel="stylesheet" href="style_table.css">
+</head>
+<body>
+    <div class="table" id="table"></div>
+    <script>
+      // Variables globales pour les colonnes et les lignes
+        let selectedCols = [];
+        let rows = [];
+        let profileName = '';
+        let selectedRows = [];
+        let data_transform = [];
+        let currentUsername  = null; // Stores the current user
+// --- Helper functions for user-specific localStorage (Corrected Version) ---
+            function getUserStorageKey(baseKey) {
+                if (!currentUsername) {
+                    return null;
+                }
+                return `${currentUsername}_${baseKey}`;
+            }
+
+            function setUserItem(baseKey, value) {
+                const userKey = getUserStorageKey(baseKey);
+                if (userKey) {
+                    try {
+                        localStorage.setItem(userKey, JSON.stringify(value));
+                        console.log(`Saved to localStorage [${userKey}]`);
+                    } catch (e) {
+                        console.error(`Error saving to localStorage [${userKey}]:`, e);
+                        alert("Error saving data. Storage might be full.");
+                    }
+                }
+            }
+
+        function getUserItem(baseKey, defaultValue = null) {
+            const userKey = getUserStorageKey(baseKey);
+            if (!userKey) return defaultValue;
+            try {
+                const item = localStorage.getItem(userKey);
+                return item ? JSON.parse(item) : defaultValue;
+            } catch (e) {
+                console.error(`Error parsing user item ${userKey}:`, e);
+                return defaultValue;
+            }
+        }
+
+            // --- End Helper Functions ---
+
+            // Function to initialize the page after user context is known
+            function initializePageVirtual() {
+                if (!currentUsername) {
+                    console.error("Cannot initialize page: Username not set.");
+                    document.getElementById('table').innerHTML = "<h2>Error: User context not loaded. Please try reloading or logging in again.</h2>";
+                    document.getElementById('downloadButton').disabled = true;
+                    return;
+                }
+                console.log(`Initializing result page for user: ${currentUsername}`);
+                selectedCols = getUserItem('selectedCols',[]);
+                rows = getUserItem('rows',[]);
+                profileName = getUserItem('profileName','');
+                selectedRows = getUserItem('selectedRows',[]);
+                data_transform = getUserItem('data_transform',[]);
+
+                virtualProfiles = getUserItem('virtualProfiles', {});       // Load the saved profiles list/data
+                virtualProfilesData = getUserItem('virtualProfilesData', {}); // Load the associated metadata
+                console.log("Loaded virtual profiles:", virtualProfiles);
+                console.log("Loaded virtual profiles data:", virtualProfilesData);
+                // Check if the HTML content string exists and is not empty
+                if (!data_transform) {
+                    console.warn("No table HTML content found in localStorage for this user.");
+                     document.getElementById('table').innerHTML = `<h2>No result data found for profile "${profileName || 'Unknown'}" for user ${currentUsername}.</h2> <p>Please go back and compute similarity first.</p>`;
+                    return;
+                }
+
+                // Now display the table with the loaded HTML content
+                enter_virtual_chiffre();
+                display_virtual_profile(profileName);
+            }
+
+            // Listener for the 'setUser' message from the parent frame
+            window.addEventListener('message', (event) => {
+                // Optional: Origin check for security
+                // if (event.origin !== 'your-expected-origin') { return; }
+
+                if (event.data && event.data.action === 'setUser') {
+                    const receivedUsername = event.data.username;
+                    console.log(`result_similar.js received user message: ${receivedUsername}`);
+
+                    // Set username and initialize *only if* it's new or wasn't set
+                    if (!currentUsername || currentUsername !== receivedUsername) {
+                        currentUsername = receivedUsername;
+                        console.log(`Username set to: ${currentUsername}. Initializing page...`);
+                        initializePageVirtual(); // Trigger loading and display
+                    } else {
+                         console.log(`User ${currentUsername} already set. Re-initializing page.`);
+                         // Re-initialize to ensure data is fresh if user navigates back and forth
+                         initializePageVirtual();
+                    }
+                }
+            });
+        function cleanProfileName(name) {
+            // Replace unwanted characters " and \ with an empty string
+            return name.replace(/["\\]/g, '');
+        }
+        console.log(profileName);
+
+        function enter_virtual_chiffre() {
+            profileName = cleanProfileName(profileName);
+            let table = `<h2>Enter data for ${profileName} </h2><table><thead><tr>`;
+            // Create column headers
+            selectedCols.forEach(colIndex => {
+                table += `<th><input type='checkbox' class='columnSelect' value='${colIndex}'>${data_transform[0][colIndex]}</th>`;
+            });
+            table += "</tr></thead><tbody>";
+
+            // Add rows with input fields
+            selectedRows.forEach((rowIndex) => {
+                table += "<tr>";
+                selectedCols.forEach((colIndex) => {
+                    table += `<td><input type="text" placeholder="Enter value" value="${data_transform[rowIndex][colIndex]}" ></td>`;
+                });
+                table += "</tr>";
+            });
+            table += "</tbody></table>";
+
+            // Inject the table into the DOM
+            document.getElementById('table').innerHTML = table;
+        }
+
+        function add_lignes() {
+            // Récupérer le tableau existant
+            const tableBody = document.querySelector('#table table tbody');
+
+            // Vérifier si le tableau body existe
+            if (tableBody) {
+                // Ajouter une nouvelle ligne
+                const newRow = tableBody.insertRow();
+
+                // Ajouter des cellules avec champs d'entrée dans la nouvelle ligne
+                selectedCols.forEach(() => {
+                    const newCell = newRow.insertCell();
+                    newCell.innerHTML = `<input type="text" placeholder="Enter value">`;
+                });
+            }
+        }
+
+
+    function delete_lignes() {
+        // Récupérer le tableau existant
+        const tableBody = document.querySelector('#table table tbody');
+
+        // Vérifier s'il y a des lignes et supprimer la dernière
+        if (tableBody && tableBody.rows.length > 0) {
+            tableBody.deleteRow(tableBody.rows.length - 1);
+        }
+    }
+
+let virtualProfiles = {}; // Object to store saved profile
+let virtualProfilesData ={};
+function add_virtual_profile() {
+    const tableBody = document.querySelector('#table table tbody');
+    const formattedVirtualRows = [];
+    const virtualprofileName = prompt("Please enter a profile name :");
+
+    // Validation du nom de profil
+    if (!virtualprofileName || virtualprofileName.trim() === "") {
+        alert("Please enter a valid name for the virtual profile.");
+        return;
+    }
+
+    // Vérification des doublons
+    if (virtualProfiles[profileName] && virtualProfiles[profileName][virtualprofileName]) {
+        const overwrite = confirm("A profile with this name already exists. Do you want to overwrite it?");
+        if (!overwrite) return;
+    }
+    // Vérifier et initialiser les objets avant d'accéder aux propriétés
+    if (!virtualProfilesData[profileName]) {
+        virtualProfilesData[profileName] = {};
+    }
+
+    if (!virtualProfilesData[profileName][virtualprofileName]) {
+        virtualProfilesData[profileName][virtualprofileName] = {
+            data: [],
+            cols: [],
+            rows: [],
+            fullrow:[]
+        };
+    }
+    virtualProfilesData[profileName][virtualprofileName]["data"] = JSON.parse(JSON.stringify(data_transform));
+    virtualProfilesData[profileName][virtualprofileName]["cols"] = JSON.parse(JSON.stringify(selectedCols));
+    virtualProfilesData[profileName][virtualprofileName]["rows"] = JSON.parse(JSON.stringify(selectedRows));
+    virtualProfilesData[profileName][virtualprofileName]["fullrow"] = JSON.parse(JSON.stringify(rows));
+
+    let header_virtual = [];
+    selectedCols.forEach(colIndex => {
+        header_virtual.push(data_transform[0][colIndex]);
+    });
+    formattedVirtualRows.push(header_virtual);
+
+    if (tableBody) {
+        Array.from(tableBody.rows).forEach(row => {
+            const rowData = Array.from(row.cells).map(cell => {
+                const input = cell.querySelector("input");
+                return input ? input.value : null; // Récupérer la valeur entrée ou null par défaut
+            });
+            formattedVirtualRows.push(rowData);
+        });
+    }
+
+    virtualProfiles[profileName] = virtualProfiles[profileName] || {};
+    virtualProfiles[profileName][virtualprofileName] = formattedVirtualRows;
+
+    setUserItem('virtualProfiles',virtualProfiles);
+    setUserItem('virtualProfilesData',virtualProfilesData);
+
+    if (profileName) {
+        display_virtual_profile(profileName);
+    } else {
+        console.warn("profileName is not defined.");
+    }
+
+}
+
+    function display_virtual_profile(profileName){
+        const virtualListContainer = document.getElementById("virtualListContainer");
+            if (!profileName || profileName === "(Aucun)") {
+                return;
+            }
+            if (!virtualListContainer) {
+                console.error("Container for profile list ('virtualListContainer') not found!");
+                return;
+            }
+            // Nettoyer le conteneur pour éviter les doublons
+            virtualListContainer.innerHTML = "";
+            if (!virtualProfiles[profileName]) {
+                virtualProfiles[profileName] = {}; // Initialiser l'objet s'il est vide
+            }
+            // Ajouter un bouton pour chaque profil dans `savedProfiles`
+            Object.keys(virtualProfiles[profileName]).forEach((childProfile) => {
+                    const virtualprofileButton = document.createElement("button");
+                    virtualprofileButton.textContent = childProfile;
+                    virtualprofileButton.style.cssText = `
+                        width: 100%;
+                        padding: 10px;
+                        margin: 5px 0;
+                        color: white;
+                        background-color: #007bff;
+                        border: none;
+                        border-radius: 30px;
+                        font-size: 16px;
+                        cursor: pointer;
+                        transition: all 0.3s ease-in-out;
+                        text-align: center;
+                    `;
+
+                    // Ajouter un événement 'click'
+                virtualprofileButton.onclick = () => {
+                    // Réinitialiser la couleur de tous les boutons
+                    Array.from(virtualListContainer.children).forEach((btn) => {
+                        btn.style.backgroundColor = "#007bff"; // Couleur par défaut
+                    });
+
+                    // Changer la couleur du bouton cliqué
+                    virtualprofileButton.style.backgroundColor = "#28a745"; // Couleur par exemple 'vert'
+                    display_virtualprofile_content(childProfile);
+                };
+
+                    // Ajouter le bouton au conteneur
+                    virtualListContainer.appendChild(virtualprofileButton);
+            });
+    }
+function display_virtualprofile_content(virtualprofileName) {
+    if (!profileName || !virtualprofileName) {
+        console.error("Profil principal ou profil virtuel non spécifié.");
+        return;
+    }
+
+    if (!virtualProfilesData[profileName] || !virtualProfilesData[profileName][virtualprofileName]) {
+        console.error("Les données du profil virtuel spécifié n'existent pas.");
+        return;
+    }
+
+    // Charger les données du profil virtuel sélectionné
+    let content = virtualProfiles[profileName][virtualprofileName];
+    data_transform = JSON.parse(JSON.stringify(virtualProfilesData[profileName][virtualprofileName]["data"])) || [];
+    selectedCols = JSON.parse(JSON.stringify(virtualProfilesData[profileName][virtualprofileName]["cols"])) || [];
+    selectedRows = JSON.parse(JSON.stringify(virtualProfilesData[profileName][virtualprofileName]["rows"])) || [];
+    rows = JSON.parse(JSON.stringify(virtualProfilesData[profileName][virtualprofileName]["fullrow"])) || [];
+
+
+    // Mettre à jour le tableau avec les nouvelles données
+    let table = `<h2>Enter data for ${profileName} </h2><table><thead><tr>`;
+    // Create column headers
+    selectedCols.forEach(colIndex => {
+        table += `<th><input type='checkbox' class='columnSelect' value='${colIndex}'>${data_transform[0][colIndex]}</th>`;
+    });
+    table += "</tr></thead><tbody>";
+
+    // Ajouter les lignes avec les données enregistrées
+    content.slice(1).forEach(rowData => {
+        table += "<tr>";
+        rowData.forEach(cellData => {
+            table += `<td><input type="text" placeholder="Enter value" value="${cellData}"></td>`;
+        });
+        table += "</tr>";
+    });
+
+    table += "</tbody></table>";
+
+    // Injecter le tableau dans le DOM
+    document.getElementById('table').innerHTML = table;
+}
+console.log(virtualProfiles);
+console.log(virtualProfilesData);
+    function euclideanDistance(vec1, vec2) {
+        if (!vec1 || !vec2 || vec1.length !== vec2.length) {
+           throw new Error('Vectors are undefined or of different lengths');
+       }
+        let sum = 0;
+        for (let i = 0; i < vec1.length; i++) {
+            sum += Math.pow(vec1[i] - vec2[i], 2);
+        }
+        return Math.sqrt(sum);
+    }
+
+    function trierParDistanceEuclidienne(fullRows, virtual_Rows, filteredRows) {
+        let lines = [];
+
+        // Diviser les lignes choisi avec des autres lignes
+        for (let i = 0; i < filteredRows.length; i++) {
+            lines.push({ original: fullRows[i], filtered: filteredRows[i] });
+        }
+        console.log(lines);
+
+        let distanceMin = [];
+        // Calculer par le euclidean algorithme
+        for (let i = 0; i < lines.length; i++) {
+            let distances = [];
+            for (let j = 0; j < virtual_Rows.length; j++) {
+                let dist = euclideanDistance(lines[i].filtered, virtual_Rows[j]);
+                distances.push(dist);
+            }
+            let minDist = Math.min(...distances);
+            distanceMin.push({ row: lines[i].original, distance_min: minDist });
+        }
+
+        // Sort par le distance
+        distanceMin.sort((a, b) => a.distance_min - b.distance_min);
+        console.log(distanceMin);
+        // Return un nouveau table après similarité
+        return distanceMin.map(item => item.row);
+    }
+
+
+    function calculer_virtual_sort() {
+        console.log("Data calcul: ",data_transform);
+        console.log("Selected Cols calcul: ", selectedCols);
+        console.log("Selected Rows calcul: ", selectedRows);
+        console.log("FullRows calcul: ", rows);
+    // Récupérer toutes les lignes ajoutées dynamiquement par l'utilisateur
+    const tableBody = document.querySelector('#table table tbody');
+    const selectedColums = Array.from(document.querySelectorAll('input.columnSelect:checked')).map(input => parseInt(input.value));
+    if(selectedColums.length === 0){
+        alert("Please select at least one column!");
+        return;
+    }
+    console.log("Columm calacul: ",selectedColums);
+    const virtual_Rows_final = [];
+    let headers_virtual = [];
+    const formattedVirtualRows = [];
+    selectedColums.forEach((colIndex) => {
+        headers_virtual.push(data_transform[0][colIndex]);
+    });
+    virtual_Rows_final.push(headers_virtual);
+
+    if (tableBody) {
+        Array.from(tableBody.rows).forEach(row => {
+            const rowData = Array.from(row.cells).map(cell => {
+                const input = cell.querySelector("input");
+                return input ? parseFloat(input.value) || 0 : 0; // Récupérer la valeur entrée ou 0 par défaut
+            });
+            let header_virtual = [];
+            selectedCols.forEach(colIndex => {
+                header_virtual.push(data_transform[0][colIndex]);
+            });
+
+            const rowDatafull = [];
+            rowDatafull.push(header_virtual);
+            rowDatafull.push(rowData);
+            const data_calcul = [];
+            virtual_Rows_final[0].forEach(header => {
+                for (let i = 0; i < rowDatafull[0].length; i++) {
+                    if(rowDatafull[0][i].trim() === header){
+                        data_calcul.push(rowDatafull[1][i]);
+                    }
+                }
+            });
+            virtual_Rows_final.push(data_calcul);
+        });
+    }
+    if (tableBody) {
+        Array.from(tableBody.rows).forEach(row => {
+            const rowData = Array.from(row.cells).map(cell => {
+                const input = cell.querySelector("input");
+                return input ? input.value: null; // Récupérer la valeur entrée ou 0 par défaut
+            });
+            formattedVirtualRows.push(rowData);
+        });
+    }
+    console.log("Virtual rows: ",formattedVirtualRows);
+    console.log(virtual_Rows_final);
+    const virtual_Rows = virtual_Rows_final.slice(1);
+
+    // Vérifier si des lignes ont été sélectionnées / remplies
+    if (virtual_Rows.length === 0 || virtual_Rows.some(row => row.every(value => value === 0))) {
+        alert("Row not valid!");
+        return;
+    }
+
+        // Des valeurs pour les colonnes on a chosi
+        const filteredRows = data_transform.slice(1).map(row => {
+            return selectedColums.map(colIndex => parseFloat(row[colIndex]) || 0);
+        });
+
+        // Valeur original dans ce fichier
+        const fullRows = rows.slice(1);
+        console.log("Full:",fullRows);
+        console.log("Fil: ",filteredRows);
+        console.log("Virtual: ",virtual_Rows);
+        // Données après similarité
+
+        const orderedData = trierParDistanceEuclidienne(fullRows, virtual_Rows, filteredRows);
+        console.log(orderedData);
+
+        console.log("Rows:",rows);
+        console.log("virtual_Rows: ",virtual_Rows_final);
+
+        // Ajouter "Real" à la fin de chaque ligne du orderedData
+        let formattedVirtualRows1 = formattedVirtualRows.map(row => {
+            let newRow = [...row]; // Faire une copie de la ligne
+            newRow.push("Virtual"); // Ajouter "Real" comme dernier élément de la ligne
+            return newRow;
+        });
+
+        // Ajouter "Real" à la fin de chaque ligne du orderedData
+        let formattedOrderedData = orderedData.map(row => {
+            let newRow = [...row]; // Faire une copie de la ligne
+            newRow.push("Real"); // Ajouter "Real" comme dernier élément de la ligne
+            return newRow;
+        });
+
+        // Insérer les virtual_Rows au début de orderedData
+        fullData = [...formattedVirtualRows1, ...formattedOrderedData];
+        console.log(fullData);
+        // Creer un table pour des nouveau fichier .csv après similarité
+        let table = `<div class=\"table\" id=\"table\"> <h1>Result virtual sort for ${profileName}</h1><table><thead><tr>`;
+        rows[0].forEach(header => {
+            table += `<th>${header}</th>`;
+        });
+        table += `<th>Status</th>`
+        table += "</tr></thead><tbody>";
+
+        fullData.forEach(rowData => {
+            // Check the last element to determine the type
+            const rowType = rowData[rowData.length - 1];
+            let rowClass = ""; // Default: no extra class
+
+            if (rowType === "Virtual") {
+                rowClass = " class='virtual-row'"; // Note the space before 'class'
+            }
+
+            table += `<tr${rowClass}>`;
+
+            for (let i = 0; i < rowData.length; i++) {
+                const cellData = rowData[i];
+                table += `<td>${cellData}</td>`; // Add the table data cell
+            }
+                table += "</tr>"; // Close the table row
+});
+        table += "</tbody></table></div>";
+        setUserItem('table',table);
+        setUserItem('profileName',profileName);
+        setUserItem('fullData',fullData);
+
+        console.log("Requesting parent to load result_virtual.html");
+        window.parent.postMessage({
+            action: 'requestNavigation',
+            targetPage: 'result_virtual.html',
+            targetId: 'result_virtual' // The ID of the link in index.html's nav
+        }, '*');
+
+    }
+
+    </script>
+    <br>
+    <fieldset><legend>Virtual profile list</legend>
+            <div id="virtualListContainer" class="select-list"></div>
+    </fieldset>
+    <br>
+    <button class="button2" onclick="add_lignes()">Add line
+        <span class="tooltip">Add a line to enter data</span>
+    </button>
+    <button class="button2" onclick="delete_lignes()">Delete line
+        <span class="tooltip">Delete a line from enter data</span>
+    </button>
+    <button class="button2" onclick="add_virtual_profile()">Save hypothesis
+        <span class="tooltip">Add virtual patients to your profile</span>
+    </button>
+    <button class="button2" onclick="calculer_virtual_sort()">Compute closest
+        <span class="tooltip">Calculation based on entered data</span>
+    </button>
+
+</body>
+</html>

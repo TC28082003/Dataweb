@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display patients</title>
+    <link rel="stylesheet" href="style_table.css">
+</head>
+<body>
+    <div id="sortOptionsPopup" style="display: none; position: absolute; border: 1px solid #ccc; background-color: dodgerblue; padding: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2); z-index: 10;">
+        <span id="closeSortPopup" class="close-button" title="Close"><img src="close-icon.png" alt="Close"></span>
+        <p>Sort options for:</p>
+        <p><strong id="sortColumnName"></strong></p>
+        <button id="sortAscButton">Sort Ascending (Min first)</button><br>
+        <button id="sortDescButton">Sort Descending (Max first)</button><br>
+    </div>
+    <div class="table" id="table"></div>
+    <script>
+                   // Variables globales pour les colonnes et les lignes
+        let currentUsername  = null;
+        let selectedColumns = [];
+        let data_transform = [];
+        let profileName = null;
+        let currentlySortingColumnIndex = -1; // To store which column index we are sorting
+    // --- Helper functions for user-specific localStorage ---
+        function getUserStorageKey(baseKey) {
+            if (!currentUsername) {
+                console.error("Username not set, cannot access user-specific storage for key:", baseKey);
+                // Potentially redirect to login or show error
+                return null; // Or throw an error
+            }
+            return `${currentUsername}_${baseKey}`;
+        }
+
+        function setUserItem(baseKey, value) {
+            const userKey = getUserStorageKey(baseKey);
+            if (userKey) {
+                localStorage.setItem(userKey, JSON.stringify(value));
+            }
+        }
+
+        function getUserItem(baseKey, defaultValue = null) {
+            const userKey = getUserStorageKey(baseKey);
+            if (!userKey) return defaultValue;
+            try {
+                const item = localStorage.getItem(userKey);
+                return item ? JSON.parse(item) : defaultValue;
+            } catch (e) {
+                console.error(`Error parsing user item ${userKey}:`, e);
+                return defaultValue;
+            }
+        }
+
+            // --- End Helper Functions ---
+        // In similar.js
+
+        function initializePageDataAndDisplay() {
+            if (!currentUsername) {
+                console.error("Cannot initialize page: Username not set.");
+                document.getElementById('table').innerHTML = "<h2>Error: User context not loaded. Please try reloading or logging in again.</h2>";
+                // Disable buttons if needed
+                const buttons = document.querySelectorAll('.button'); // Assuming .button is common class for Compute/Explore
+                buttons.forEach(button => { button.disabled = true; button.style.opacity = 0.5; });
+                return;
+            }
+            console.log(`Initializing page data for user: ${currentUsername}`);
+
+            // Load data using user-specific keys
+            selectedColumns = getUserItem('selectedColumns', []);
+            data_transform = getUserItem('data_transform', []);
+            profileName = getUserItem('profileName', '');
+
+            console.log("Initial load - User:", currentUsername);
+            console.log("Initial load - Selected Column Indices (Original Profile):", selectedColumns);
+            console.log("Initial load - Data for Table:", data_transform);
+            console.log("Initial load - Profile Name:", profileName);
+
+            if (!data_transform || data_transform.length === 0) {
+                console.warn("No data loaded for similarity display.");
+                 document.getElementById('table').innerHTML = `<h2>No data passed for profile "${profileName || 'Unknown'}" for user ${currentUsername}.</h2> <p>Please go back and select data on the 'Page Home'.</p>`;
+                 // Disable buttons
+                 const buttons = document.querySelectorAll('.button');
+                 buttons.forEach(button => { button.disabled = true; button.style.opacity = 0.5; });
+                return;
+            }
+
+            // Enable buttons if they were disabled
+            const buttons = document.querySelectorAll('.button');
+            buttons.forEach(button => { button.disabled = false; button.style.opacity = 1; });
+
+
+            // Now display the table with the loaded data
+            console.log("Data loaded, calling afficherTableau...");
+            afficherTableau(); // <<< Call display AFTER data is loaded
+        }
+
+        // The message listener remains largely the same, ensuring it calls initializePageDataAndDisplay
+        window.addEventListener('message', (event) => {
+            // Optional: Origin check for security
+            // if (event.origin !== 'expected-origin') { return; }
+
+            if (event.data && event.data.action === 'setUser') {
+                const receivedUsername = event.data.username;
+                console.log(`similar.js received user message: ${receivedUsername}`);
+
+                // Set username and initialize *only if* it's new or wasn't set
+                if (!currentUsername || currentUsername !== receivedUsername) {
+                    currentUsername = receivedUsername;
+                    console.log(`Username set to: ${currentUsername}. Initializing page...`);
+                    initializePageDataAndDisplay(); // Trigger loading and display
+                } else {
+                     console.log(`User ${currentUsername} already set. Re-initializing.`);
+                     // Decide if you *need* to re-initialize even if the username is the same.
+                     // Usually yes, in case the underlying data changed between navigations.
+                     initializePageDataAndDisplay();
+                }
+            }
+        });
+
+        // Afficher le tableau
+        function cleanProfileName(name) {
+            // Replace unwanted characters " and \ with an empty string
+            return name.replace(/["\\]/g, '');
+        }
+
+        function hideSortOptions() {
+            const popup = document.getElementById('sortOptionsPopup');
+            if (popup) {
+                popup.style.display = 'none';
+            }
+            console.log("Hide sort options");
+            currentlySortingColumnIndex = -1;
+        }
+
+        function showSortOptions(columnIndex, event) {
+            if (event.target.tagName === 'INPUT') {
+                 return;
+            }
+
+            const popup = document.getElementById('sortOptionsPopup');
+            const columnNameElement = document.getElementById('sortColumnName');
+            if (!popup || !columnNameElement || columnIndex < 0 || !data_transform[0]) return;
+
+            // Get the actual column index from the original data structure
+            const actualColIndex = selectedColumns[columnIndex]; // Map displayed index to original data index
+            const columnName = data_transform[0][actualColIndex];
+
+            currentlySortingColumnIndex = actualColIndex;
+            columnNameElement.textContent = columnName;
+
+            const rect = event.currentTarget.getBoundingClientRect();
+            popup.style.left = `${window.scrollX + rect.left}px`;
+            popup.style.top = `${window.scrollY + rect.bottom}px`; // Position below the header
+            popup.style.display = 'block';
+
+        }
+        console.log(profileName);
+        function afficherTableau() {
+            if (profileName) { // Only clean if it exists
+                profileName = cleanProfileName(profileName);
+            }
+            console.log("Data for display: ", data_transform);
+            console.log("Selected columns for display:", selectedColumns);
+
+            let tableHtml = `<h1><P></P> ${profileName || 'No Profile'}</h1><table><thead><tr>`;
+            tableHtml += "<th>Select lines</th>"; // Non-sortable header
+
+            // Add header cells with click listeners for sorting
+            selectedColumns.forEach((originalColIndex, displayIndex) => {
+                // Ensure header row (data_transform[0]) exists and has the column
+                const headerText = (data_transform[0] && data_transform[0][originalColIndex] !== undefined)
+                                   ? data_transform[0][originalColIndex]
+                                   : `Column ${originalColIndex}`;
+
+                // Added onclick directly here for simplicity, passing displayIndex
+                // Pass 'event' to get positioning info
+                tableHtml += `<th onclick="showSortOptions(${displayIndex}, event)">`; // Pass the DISPLAY index
+                tableHtml += `<input type='checkbox' class='columnSelect' value='${originalColIndex}'> `; // Stop propagation on checkbox click
+                tableHtml += `${headerText}</th>`;
+            });
+
+            tableHtml += "</tr></thead><tbody>";
+
+            // Check if data_transform has data rows
+            if (data_transform.length > 1) {
+                // Data rows
+                for (let i = 1; i < data_transform.length; i++) {
+                    tableHtml += "<tr>";
+                    tableHtml += `<td><input type='checkbox' class='rowSelect' value='${i}'></td>`;
+                    selectedColumns.forEach(originalColIndex => {
+                         // Handle potential undefined cells gracefully
+                        const cellData = (data_transform[i] && data_transform[i][originalColIndex] !== undefined)
+                                       ? data_transform[i][originalColIndex]
+                                       : '';
+                        tableHtml += `<td>${cellData}</td>`;
+                    });
+                    tableHtml += "</tr>";
+                }
+            } else {
+                // Optional: Message if no data rows
+                const colCount = selectedColumns.length + 1; // +1 for the select lines column
+                 tableHtml += `<tr><td colspan="${colCount}">No data rows available.</td></tr>`;
+            }
+
+            tableHtml += "</tbody></table>";
+            document.getElementById('table').innerHTML = tableHtml;
+
+            // Hide sort options popup whenever table is redrawn
+            hideSortOptions();
+        }
+        function getTableData() {
+                let tableData = [];
+                // Sélectionner le tableau affiché
+                const table = document.querySelector('#table table'); // Trouver le tableau dans le conteneur "table"
+                const rows = table.querySelectorAll('tr'); // Récupérer toutes les lignes du tableau
+                rows.forEach((row) => {
+                    let rowData = [];
+
+                    // Sélectionner toutes les cellules (th ou td)
+                    const cells = row.querySelectorAll('th, td');
+                    cells.forEach((cell, cellIndex) => {
+                        if (cellIndex > 0) { // Ignorer la première cellule de chaque ligne
+                            rowData.push(cell.innerText || cell.textContent);
+                        }
+                    });
+
+                    tableData.push(rowData); // Ajouter la ligne mise à jour dans le tableau final
+                });
+                return tableData;
+        }
+        // --- Sorting Logic ---
+
+    function compareValues(a, b, ascending = true) {
+        const valA = a === null || a === undefined ? '' : a;
+        const valB = b === null || b === undefined ? '' : b;
+
+        // Attempt numeric comparison first
+        const numA = parseFloat(valA);
+        const numB = parseFloat(valB);
+
+        let comparison = 0;
+
+        if (!isNaN(numA) && !isNaN(numB)) {
+            // Both are numbers
+            comparison = numA - numB;
+        } else {
+            // At least one is not a number, use string comparison
+            const strA = String(valA).toLowerCase(); // Case-insensitive string comparison
+            const strB = String(valB).toLowerCase();
+            comparison = strA.localeCompare(strB);
+        }
+
+        return ascending ? comparison : comparison * -1; // Reverse for descending
+    }
+
+    /**
+     * Sorts the data_transform array based on the currently selected column and sort type.
+     * @param {'asc' | 'desc'} sortType - The type of sorting ('asc' for ascending, 'desc' for descending)
+     */
+    function simple_sort(sortType) {
+        console.log(`Sorting column index: ${currentlySortingColumnIndex}, type: ${sortType}`);
+        if (currentlySortingColumnIndex === -1 || !data_transform || data_transform.length < 2) {
+            console.log("Sorting prerequisites not met.");
+            hideSortOptions();
+            return; // No column selected or no data/header to sort
+        }
+
+        // Separate header row from data rows
+        const headerRow = data_transform[0];
+        let dataRows = data_transform.slice(1);
+
+        // Perform the sort on dataRows
+        const ascending = (sortType === 'asc');
+        dataRows.sort((rowA, rowB) => {
+            // Ensure rows and the specific cell exist before comparing
+            const valA = rowA && rowA[currentlySortingColumnIndex] !== undefined ? rowA[currentlySortingColumnIndex] : null;
+            const valB = rowB && rowB[currentlySortingColumnIndex] !== undefined ? rowB[currentlySortingColumnIndex] : null;
+            return compareValues(valA, valB, ascending);
+        });
+
+        // Recombine header and sorted data rows
+        data_transform = [headerRow, ...dataRows];
+
+        // Update the displayed table
+        afficherTableau(); // This will also hide the popup
+    }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const sortAscBtn = document.getElementById('sortAscButton');
+            const sortDescBtn = document.getElementById('sortDescButton');
+            const closePopupBtn = document.getElementById('closeSortPopup');
+            if (sortAscBtn) {
+                sortAscBtn.addEventListener('click', () => simple_sort('asc'));
+            }
+            if (sortDescBtn) {
+                sortDescBtn.addEventListener('click', () => simple_sort('desc'));
+            }
+            if (closePopupBtn) { // <-- Add listener for the 'x' button
+                closePopupBtn.addEventListener('click', hideSortOptions); // Reuse the existing hide function
+            }
+             console.log("similar.js DOMContentLoaded - Listener setup complete. Waiting for user message.");
+
+            // Optional: Show a loading message initially
+            const tableDiv = document.getElementById('table');
+            if (tableDiv) {
+                tableDiv.innerHTML = "<h2>Loading user context...</h2>";
+            }
+        });
+
+        // Fonction pour calculer la distance Euclidienne entre deux vecteurs
+        function euclideanDistance(vec1, vec2) {
+            let sum = 0;
+            for (let i = 0; i < vec1.length; i++) {
+                sum += Math.pow(vec1[i] - vec2[i], 2);
+            }
+            return Math.sqrt(sum);
+        }
+
+function trierParDistanceEuclidienne(fullRows, selectedRows, filteredRows) {
+    let ligneChoisis = [];
+    let autres = [];
+
+    // Diviser les lignes choisi avec des autres lignes
+    for (let i = 0; i < filteredRows.length; i++) {
+        if (selectedRows.includes(i + 1)) {
+            ligneChoisis.push({ original: fullRows[i], filtered: filteredRows[i] });
+        } else {
+            autres.push({ original: fullRows[i], filtered: filteredRows[i] });
+        }
+    }
+    console.log(ligneChoisis);
+    console.log(autres);
+    let distanceMin = [];
+    // Calculer par le euclidean algorithme
+    for (let i = 0; i < autres.length; i++) {
+        let distances = [];
+        for (let j = 0; j < ligneChoisis.length; j++) {
+            let dist = euclideanDistance(autres[i].filtered, ligneChoisis[j].filtered);
+            distances.push(dist);
+        }
+        let minDist = Math.min(...distances);
+        distanceMin.push({ row: autres[i].original, distance: minDist });
+    }
+
+    // Sort par le distance
+    distanceMin.sort((a, b) => a.distance - b.distance);
+    console.log(distanceMin);
+    // Return un nouveau table après similarité
+    return [
+        ...ligneChoisis.map(item => item.original),
+        ...distanceMin.map(item => item.row)
+    ];
+}
+
+function calculer_similarity() {
+    const selectedRows = Array.from(document.querySelectorAll('input.rowSelect:checked')).map(input => parseInt(input.value));
+    const selectedCols = Array.from(document.querySelectorAll('input.columnSelect:checked')).map(input => parseInt(input.value));
+    let rows = getTableData();
+    console.log("Rows: ",rows);
+
+    const tooltip = document.getElementById('tooltip');
+    tooltip.style.display = "none"; // Masquer le tooltip par défaut
+
+    if (selectedRows.length === 0) {
+        tooltip.textContent = "if no line selected, message: \"Please select at least one patient!\"";
+        tooltip.style.display = "block"; // Afficher le tooltip
+        alert("Please select at least one row!");
+        return;
+    }
+    else if (selectedCols.length === 0) {
+        tooltip.textContent = "if no column selected, message: \"Please select at least one column!\"";
+        tooltip.style.display = "block"; // Afficher le tooltip
+        alert("Please select at least one column!");
+        return;
+    }
+    else{
+        tooltip.textContent = "Click here to see the result!";
+        tooltip.style.display = "block"; // Afficher le tooltip
+    }
+
+    // Des valeurs pour les colonnes on a chosi
+    const filteredRows = data_transform.slice(1).map(row => {
+        return selectedCols.map(colIndex => parseFloat(row[colIndex]) || 0);
+    });
+
+    console.log("Fil: ",filteredRows);
+    // Valeur original dans ce fichier
+    const fullRows = rows.slice(1);
+    console.log("Full: ",fullRows);
+
+    // Données après similarité
+    const orderedData = trierParDistanceEuclidienne(fullRows, selectedRows, filteredRows);
+    console.log(orderedData);
+    // Creer un table pour des nouveau fichier .csv après similarité
+    let table_similarity = `<div class=\"table\" id=\"table\"> <h1> Result Similarity for ${profileName} </h1><table><thead><tr>`;
+    rows[0].forEach(header => {
+        table_similarity += `<th>${header}</th>`;
+    });
+    table_similarity += "</tr></thead><tbody>";
+
+    orderedData.forEach(row => {
+        table_similarity += "<tr>";
+        row.forEach(cell => {
+            table_similarity += `<td>${cell}</td>`;
+        });
+        table_similarity += "</tr>";
+    });
+    table_similarity += "</tbody></table></div>";
+    setUserItem('profileName',profileName);
+    setUserItem('table_similarity',table_similarity);
+    console.log("Requesting parent to load result_similarity.html");
+    window.parent.postMessage({
+        action: 'requestNavigation',
+        targetPage: 'result_similar.html',
+        targetId: 'result_similar' // The ID of the link in index.html's nav
+    }, '*');
+}
+
+
+function virtual_profile() {
+    const selectedRows = Array.from(document.querySelectorAll('input.rowSelect:checked')).map(input => parseInt(input.value));
+    let rows = getTableData();
+    let selectedCols = selectedColumns;
+    console.log(selectedColumns);
+    const tooltip1 = document.getElementById('tooltip1');
+    tooltip1.style.display = "none"; // Masquer le tooltip par défaut
+
+    if (selectedRows.length === 0) {
+        tooltip1.textContent = "if no line selected, message: \"Please select at least one patient!\"";
+        tooltip1.style.display = "block"; // Afficher le tooltip
+        alert("Please select at least one row!");
+        return;
+    }
+    else {
+        tooltip1.textContent = "Click here to display virtual patients!";
+        tooltip1.style.display = "block"; // Afficher le tooltip
+    }
+
+    // Stocker les colonnes et les lignes dans localStorage
+    setUserItem('selectedRows',selectedRows);
+    setUserItem('selectedCols',selectedCols);
+    setUserItem('rows',rows);
+    setUserItem('profileName',profileName);
+    setUserItem('data_transform',data_transform);
+
+
+    console.log("Requesting parent to load virtual.html");
+    window.parent.postMessage({
+        action: 'requestNavigation',
+        targetPage: 'virtual.html',
+        targetId: 'virtual' // The ID of the link in index.html's nav
+    }, '*');
+}
+
+    </script>
+    <br>
+    <button class="button" onclick="calculer_similarity()">
+    Compute similarity
+        <span class="tooltip" id="tooltip">If no line selected, message : "Please select patients"</span>
+    </button>
+    <button class="button" onclick="virtual_profile()">Explore hypothesis
+        <span class="tooltip" id="tooltip1">If no line selected, message : "Please select patients"</span>
+    </button>
+</body>
+</html>

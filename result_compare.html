@@ -1,0 +1,163 @@
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Comparison Results</title>
+        <link rel="stylesheet" href="style_table.css"> <!-- Use common table styles -->
+    </head>
+    <body>
+        <!-- Container for dynamic title and results table -->
+        <div id="result-container" style="width: 95%; margin: 20px auto;">
+             <h1 id="result-title" style="text-align: center; margin-bottom: 20px;">Comparison Results</h1>
+             <div id="result-display">
+                 <!-- Comparison table HTML will be injected here -->
+                  <p>Loading comparison results...</p>
+             </div>
+        </div>
+
+        <br>
+        <!-- Download Button -->
+        <div style="text-align: center; margin-top: 15px;">
+            <button class="button-base button-download" id="downloadBtn" onclick="exportComparisonToCSV()">
+                Download Results as CSV
+                <span class="tooltip">Click here to download the comparison results in CSV format.</span>
+            </button>
+        </div>
+
+        <script>
+            // --- Constants ---
+            const LS_COMPARISON_RESULT_HTML = 'comparisonResultHtml';
+            const LS_COMPARISON_PARAMS = 'comparisonParams';
+            const LS_DATA_FOR_EXPORT = 'comparisonDataForExport'; // Raw data array
+            const LS_HEADERS_FOR_EXPORT = 'comparisonHeadersForExport'; // Headers array
+
+            let comparisonData = []; // Store raw data for export
+            let comparisonHeaders = []; // Store headers for export
+            let comparisonParams = {}; // Store params for title/filename
+
+            // --- Utility: Safely parse JSON ---
+            function safelyParseJson(key, defaultValue = null) {
+                try {
+                    const item = localStorage.getItem(key);
+                    // Check explicitly for null or undefined string representations
+                    if (item === null || item === 'undefined' || item === 'null') {
+                         return defaultValue;
+                    }
+                    return item ? JSON.parse(item) : defaultValue;
+                } catch (e) {
+                    console.error(`Error parsing JSON from localStorage key "${key}":`, e);
+                    return defaultValue;
+                }
+            }
+
+            // --- Load results from localStorage ---
+            function loadComparisonResults() {
+                const resultDisplay = document.getElementById('result-display');
+                const resultTitle = document.getElementById('result-title');
+                const downloadButton = document.getElementById('downloadBtn');
+
+                if (!resultDisplay || !resultTitle || !downloadButton) {
+                     console.error("Required display elements not found.");
+                     if(resultDisplay) resultDisplay.innerHTML = "<h2>Error: Page structure incorrect.</h2>";
+                     return;
+                }
+
+                // Load data
+                const resultHtmlString = safelyParseJson(LS_COMPARISON_RESULT_HTML);
+                comparisonParams = safelyParseJson(LS_COMPARISON_PARAMS, {});
+                comparisonData = safelyParseJson(LS_DATA_FOR_EXPORT, []);
+                comparisonHeaders = safelyParseJson(LS_HEADERS_FOR_EXPORT, []);
+
+
+                // Update Title
+                if (comparisonParams && comparisonParams.cat1 && comparisonParams.cat2) {
+                    const profileCtx = comparisonParams.profileName ? ` for ${comparisonParams.profileName}` : '';
+                    resultTitle.textContent = `Comparison: ${comparisonParams.cat1} vs ${comparisonParams.cat2}${profileCtx}`;
+                } else {
+                     resultTitle.textContent = "Comparison Results";
+                }
+
+                // Display Table HTML
+                if (resultHtmlString) {
+                    resultDisplay.innerHTML = resultHtmlString; // Inject the saved HTML
+                    console.log("Comparison result table loaded.");
+                } else {
+                    resultDisplay.innerHTML = "<h2>No comparison result data found in storage.</h2><p>Please run a group comparison from the 'Display Patients' page.</p>";
+                    console.warn("No comparisonResultHtml found in localStorage.");
+                     // Disable download if no table loaded
+                     downloadButton.disabled = true;
+                     downloadButton.style.opacity = 0.5;
+                     downloadButton.style.cursor = 'not-allowed';
+                     return; // Stop if no HTML
+                }
+
+                 // Enable/Disable download based on export data presence
+                if (comparisonData.length === 0 || comparisonHeaders.length === 0) {
+                    console.warn("Data or headers for CSV export are missing.");
+                    downloadButton.disabled = true;
+                    downloadButton.style.opacity = 0.5;
+                    downloadButton.style.cursor = 'not-allowed';
+                    const tooltip = downloadButton.querySelector('.tooltip');
+                    if(tooltip) tooltip.textContent = "Export disabled: Missing data.";
+                } else {
+                    downloadButton.disabled = false;
+                    downloadButton.style.opacity = 1;
+                    downloadButton.style.cursor = 'pointer';
+                }
+            }
+
+            // --- Export to CSV ---
+            function exportComparisonToCSV() {
+                if (comparisonData.length === 0 || comparisonHeaders.length === 0) {
+                    alert("No data available to export.");
+                    return;
+                }
+
+                 // Use loaded headers and data
+                const csvHeaders = comparisonHeaders.map(header => {
+                     let cleanHeader = String(header).replace(/"/g, '""');
+                     if (cleanHeader.includes(',') || cleanHeader.includes('\n')) {
+                         cleanHeader = `"${cleanHeader}"`;
+                     }
+                     return cleanHeader;
+                 }).join(",");
+
+                const csvRows = comparisonData.map(dataRowObject => {
+                    // Map the headers to the keys in the data row object
+                    return comparisonHeaders.map(headerKey => {
+                         let cellText = String(dataRowObject[headerKey] ?? "").replace(/"/g, '""');
+                         if (cellText.includes(',') || cellText.includes('\n')) {
+                             cellText = `"${cellText}"`;
+                         }
+                         return cellText;
+                    }).join(",");
+                });
+
+                const csvString = csvHeaders + "\n" + csvRows.join("\n");
+
+                // Create and trigger download
+                const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+
+                // Construct filename using parameters
+                 const cat1 = comparisonParams.cat1 || 'Cat1';
+                 const cat2 = comparisonParams.cat2 || 'Cat2';
+                 const profile = comparisonParams.profileName || 'Profile';
+                const filename = `Result_compare_${profile}_${cat1}_vs_${cat2}.csv`;
+                link.setAttribute("download", filename);
+
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }
+
+            // --- Load on page ready ---
+            document.addEventListener('DOMContentLoaded', loadComparisonResults);
+
+        </script>
+    </body>
+</html>

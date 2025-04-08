@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Result Similarity</title>
+        <link rel="stylesheet" href="style_table.css">
+        <link rel="stylesheet" href="style.css"> <!-- Added reference to main style for button consistency -->
+    </head>
+    <body>
+        <!-- This container will hold the table loaded from localStorage -->
+        <div id="table-container">
+            <h2>Loading results...</h2>
+        </div>
+        <br>
+        <!-- Using button1 class assuming it's defined in style.css or style_table.css -->
+        <button class="button1" id="downloadButton" onclick="export_en_CSV()" disabled>Download result
+            <span class="tooltip">Click here to download result.</span>
+        </button>
+
+        <script>
+            // --- Global Variables ---
+            let tableHtmlContent = null; // Stores the HTML string of the table
+            let profileName = null;      // Stores the profile name for the download filename
+            let currentUsername  = null; // Stores the current user
+
+             // --- Helper functions for user-specific localStorage (Corrected Version) ---
+            function getUserStorageKey(baseKey) {
+                if (!currentUsername) {
+                    console.error("Username not set, cannot access user-specific storage for key:", baseKey);
+                    return null;
+                }
+                return `${currentUsername}_${baseKey}`;
+            }
+
+
+        function getUserItem(baseKey, defaultValue = null) {
+            const userKey = getUserStorageKey(baseKey);
+            if (!userKey) return defaultValue;
+            try {
+                const item = localStorage.getItem(userKey);
+                return item ? JSON.parse(item) : defaultValue;
+            } catch (e) {
+                console.error(`Error parsing user item ${userKey}:`, e);
+                return defaultValue;
+            }
+        }
+
+            // --- End Helper Functions ---
+
+            // Function to initialize the page after user context is known
+            function initializePageResult() {
+                if (!currentUsername) {
+                    console.error("Cannot initialize page: Username not set.");
+                    document.getElementById('table-container').innerHTML = "<h2>Error: User context not loaded. Please try reloading or logging in again.</h2>";
+                    document.getElementById('downloadButton').disabled = true;
+                    return;
+                }
+                console.log(`Initializing result page for user: ${currentUsername}`);
+
+                // Load data using user-specific keys
+                // Retrieve the raw HTML string for the table
+                tableHtmlContent = getUserItem('table_similarity', null);
+                // Retrieve the profile name (which should be a simple string stored via JSON.stringify)
+                profileName = getUserItem('profileName', '');
+
+                console.log("Initial load - User:", currentUsername);
+                console.log("Initial load - Table HTML:", tableHtmlContent ? tableHtmlContent.substring(0, 100) + '...' : 'null'); // Log snippet
+                console.log("Initial load - Profile Name:", profileName);
+
+                // Check if the HTML content string exists and is not empty
+                if (!tableHtmlContent || typeof tableHtmlContent !== 'string' || tableHtmlContent.trim() === '') {
+                    console.warn("No table HTML content found in localStorage for this user.");
+                     document.getElementById('table-container').innerHTML = `<h2>No result data found for profile "${profileName || 'Unknown'}" for user ${currentUsername}.</h2> <p>Please go back and compute similarity first.</p>`;
+                     document.getElementById('downloadButton').disabled = true; // Disable download if no table
+                    return;
+                }
+
+                // Now display the table with the loaded HTML content
+                console.log("Table HTML content loaded, calling loadTable...");
+                loadTable();
+
+                // Enable the download button
+                 document.getElementById('downloadButton').disabled = false;
+            }
+
+            // Listener for the 'setUser' message from the parent frame
+            window.addEventListener('message', (event) => {
+                // Optional: Origin check for security
+                // if (event.origin !== 'your-expected-origin') { return; }
+
+                if (event.data && event.data.action === 'setUser') {
+                    const receivedUsername = event.data.username;
+                    console.log(`result_similar.js received user message: ${receivedUsername}`);
+
+                    // Set username and initialize *only if* it's new or wasn't set
+                    if (!currentUsername || currentUsername !== receivedUsername) {
+                        currentUsername = receivedUsername;
+                        console.log(`Username set to: ${currentUsername}. Initializing page...`);
+                        initializePageResult(); // Trigger loading and display
+                    } else {
+                         console.log(`User ${currentUsername} already set. Re-initializing page.`);
+                         // Re-initialize to ensure data is fresh if user navigates back and forth
+                         initializePageResult();
+                    }
+                }
+            });
+
+            // Function to load the table HTML into the container
+            function loadTable() {
+                const container = document.getElementById('table-container');
+                if (container && tableHtmlContent) {
+                    // **FIX:** Directly set innerHTML with the retrieved HTML string
+                    container.innerHTML = tableHtmlContent;
+                    console.log("Table HTML injected into container.");
+                } else {
+                    console.error("Table container not found or table HTML content is missing.");
+                     container.innerHTML = "<h2>Error displaying table content.</h2>"; // Show error in container
+                     document.getElementById('downloadButton').disabled = true;
+                }
+            }
+
+            // Function to export the displayed table content to CSV
+            function export_en_CSV() {
+                 if (!profileName) {
+                     profileName = "similarity_results"; // Default filename if name missing
+                     console.warn("Profile name missing, using default for download.");
+                 }
+
+                let csvContent = "";
+                // Select the table *inside* the container (assuming it's the only/first table)
+                const tableElement = document.querySelector("#table-container table");
+
+                if (!tableElement) {
+                    alert("Could not find the table element to export.");
+                    console.error("Table element not found within #table-container for export.");
+                    return;
+                }
+
+                const rows = tableElement.querySelectorAll("tr");
+
+                rows.forEach((row) => {
+                    let rowData = [];
+                    // Get text from both header (th) and data (td) cells
+                    row.querySelectorAll("th, td").forEach(cell => {
+                        // Enclose cell content in double quotes to handle commas within data
+                        // Also escape existing double quotes by doubling them ("" becomes """")
+                        let cellText = cell.innerText || cell.textContent || ""; // Get text content
+                        let escapedText = cellText.replace(/"/g, '""'); // Escape double quotes
+                        rowData.push(`"${escapedText}"`); // Wrap in double quotes
+                    });
+                    csvContent += rowData.join(",") + "\n"; // Join with comma, add newline
+                });
+
+                 // Remove trailing newline if content exists
+                 if (csvContent.endsWith("\n")) {
+                    csvContent = csvContent.slice(0, -1);
+                 }
+
+                if (!csvContent) {
+                    alert("No data found in the table to export.");
+                    return;
+                }
+
+                let blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+                let link = document.createElement("a");
+
+                // Create a sanitized filename
+                 let safeProfileName = profileName.replace(/[^a-z0-9_\-.]/gi, '_'); // Replace unsafe chars with underscore
+                 let filename = `Result_similarity_${safeProfileName}.csv`;
+
+                if (navigator.msSaveBlob) { // IE 10+
+                     navigator.msSaveBlob(blob, filename);
+                 } else {
+                    link.href = URL.createObjectURL(blob);
+                    link.setAttribute("download", filename);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(link.href); // Clean up blob URL
+                 }
+                 console.log(`Exporting data as ${filename}`);
+            }
+
+             // Initial setup: The 'message' listener will trigger initializePageResult
+             console.log("result_similar.html script loaded. Waiting for 'setUser' message...");
+
+        </script>
+    </body>
+</html>

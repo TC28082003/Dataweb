@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+        <meta charset="UTF-8"/>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <title>Select file</title>
+        <link rel="stylesheet" href="style.css">
+</head>
+<body>
+        <input type = "file" id="csvfile">
+        <label for="csvfile">Select file (.csv)</label>
+        <!-- Container for all content -->
+        <div id="pageContentContainer">
+            <!-- Initial loading message -->
+            <h2>Loading user data...</h2>
+        </div>
+        <template id="pageContentTemplate">
+        <div id="table">
+                <div id="profileContainer" style="margin-bottom: 20px; text-align: center;">
+            <h2 id="profileTitle" style="font-size: 22px; font-weight: bold; color: #007bff; margin-bottom: 10px;">
+                Profile Name : <span id="displayProfileName" style="color: #FF4500;"></span>
+            </h2>
+        </div>
+
+        <fieldset>
+            <legend>Dataset file</legend>
+            <div id="fileListContainer" class="file-list">
+                <!-- Your file items will be appended here -->
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>Previous selections</legend>
+            <div id="profileListContainer" class="select-list">
+            </div>
+        </fieldset>
+
+        <fieldset>
+            <legend>Display columns</legend>
+            <div id="columnDisplay" style="padding: 10px; border: 1px solid #ccc; border-radius: 5px; background-color: #f9f9f9;">
+                Please select a profile to display its columns.
+            </div>
+        </fieldset>
+
+        <div style="margin-top: 20px; text-align: center;">
+            <button class="button1" onclick="Save_profile()">Save profile
+            </button>
+            <button class="button1" onclick="delete_profil()">Delete profile
+            </button>
+            <button class="button1" onclick="simlilar_profile()">Display patients
+            </button>
+        </div>
+        </div>
+        </template>
+        <script>
+        let currentUsername = null;
+        let isLoading = false;
+        const BACKEND_URL = 'http://localhost:3000'; // Ensure this is correct
+        let savedProfiles;
+        let savedprofilesparent;
+        let lastVisitedProfile;
+        let userAppDataCache = null; // Initially null, populated on first load
+
+        // --- DOM Elements (get them when needed or after page load) ---
+        let fileInput; // Will be assigned in initializePage
+        let fileListContainer;
+        let profileListContainer;
+        let columnDisplay;
+        let displayProfileName;
+        let loadingIndicator;
+        let errorMessageElement;
+        let pageContentContainer;
+        let pageContentTemplate;
+
+        function showLoading(show) {
+            isLoading = show;
+            if (loadingIndicator) {
+                loadingIndicator.style.display = show ? 'block' : 'none';
+            }
+            // Optionally disable buttons while loading
+            const buttons = document.querySelectorAll('button.button1');
+            buttons.forEach(button => button.disabled = show);
+        }
+
+        function showError(message) {
+            if (errorMessageElement) {
+                errorMessageElement.textContent = message;
+                errorMessageElement.style.display = message ? 'block' : 'none';
+            } else {
+                // Fallback if element not found yet
+                if(message) alert(`Error: ${message}`);
+            }
+        }
+        async function loadAndCacheUserData() {
+                    if (!currentUsername) {
+                         console.error("Cannot load data: Username not set.");
+                         showError("User context missing. Cannot load data.");
+                         return false;
+                    }
+                    if (isLoading) {
+                        console.warn("Data load already in progress.");
+                        return false; // Avoid concurrent loads
+                    }
+                    console.log(`Fetching and caching user data for ${currentUsername}...`);
+                    showLoading(true);
+                    showError(null); // Clear previous errors
+
+                    try {
+                        const response = await fetch(`${BACKEND_URL}/api/user/data`, {
+                            method: 'GET',
+                            credentials: 'include'
+                        });
+                        if (!response.ok) {
+                            const errorResult = await response.json();
+                            throw new Error(errorResult.message || `HTTP error! status: ${response.status}`);
+                        }
+                        // Store the entire fetched object in the cache
+                        // Use default empty structure if backend returns null/undefined
+                        userAppDataCache = (await response.json()) || { savedProfiles: {}, savedprofilesparent: {}, lastVisitedProfile: "" };
+                        console.log("User data loaded and cached:", userAppDataCache);
+                        showLoading(false);
+                        return true;
+                    } catch (error) {
+                        console.error("Failed to load user data:", error);
+                        userAppDataCache = null; // Clear cache on error
+                        showError(`Failed to load data: ${error.message}`);
+                        showLoading(false);
+                        return false;
+                    }
+        }
+        async function saveFullUserData(dataToSave) {
+                    if (!currentUsername) {
+                        console.error("Cannot save data: User not set.");
+                        showError("User context missing. Cannot save data.");
+                        return false;
+                    }
+                     if (isLoading) {
+                         console.warn("Save request ignored: Another operation is in progress.");
+                         showError("Please wait for the current operation to complete.");
+                         return false;
+                     }
+                    console.log(`Saving full user data for ${currentUsername}...`);
+                    showLoading(true);
+                    showError(null); // Clear previous errors
+
+                    try {
+                        const response = await fetch(`${BACKEND_URL}/api/user/data`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(dataToSave),
+                            credentials: 'include'
+                        });
+                        if (!response.ok) {
+                            const errorResult = await response.json();
+                            throw new Error(errorResult.message || `HTTP error! status: ${response.status}`);
+                        }
+                        console.log("User data saved successfully.");
+                        // Update the cache ONLY on successful save
+                        userAppDataCache = dataToSave;
+                        showLoading(false);
+                        return true;
+                    } catch (error) {
+                        console.error("Failed to save user data:", error);
+                        showError(`Failed to save data: ${error.message}`);
+                        showLoading(false);
+                        return false;
+                    }
+        }
+
+        function getUserItem(baseKey, defaultValue = null) {
+            if (!currentUsername) {
+                 console.warn(`getUserItem(${baseKey}): Cannot get item, username not set.`);
+                 return defaultValue;
+            }
+            if (userAppDataCache === null) {
+                console.warn(`getUserItem(${baseKey}): Cache not loaded. Returning default.`);
+                // Consider triggering loadAndCacheUserData here if needed, but it makes getUserItem async
+                // For simplicity now, we assume the initial load succeeded.
+                return defaultValue;
+            }
+            // Return the specific key from the cached object
+            const value = userAppDataCache[baseKey];
+            return value !== undefined ? value : defaultValue;
+        }
+
+        async function setUserItem(baseKey, value) {
+             if (!currentUsername) {
+                 console.error(`setUserItem(${baseKey}): Cannot set item, username not set.`);
+                 return;
+             }
+             if (userAppDataCache === null) {
+                 // Attempt to load data first if cache is missing? Risky.
+                 // Better to ensure data is loaded initially.
+                 console.error(`setUserItem(${baseKey}): Cannot set item, data cache not loaded.`);
+                 showError("Cannot save: Data not loaded. Please refresh.");
+                 return;
+             }
+
+             console.log(`Updating cache for key "${baseKey}" and triggering save.`);
+             // 1. Update the value within the cached object
+             userAppDataCache[baseKey] = value;
+
+             // 2. Trigger saving the entire updated cache to the backend
+             // We make a copy to avoid potential modifications during the async save operation
+             const dataToSend = structuredClone(userAppDataCache);
+             const success = await saveFullUserData(dataToSend);
+
+             if (!success) {
+                 // If save failed, maybe revert the cache change? Or leave it and let user retry?
+                 console.error(`Failed to save update for key "${baseKey}" to backend.`);
+                 // Reverting might be complex if other changes happened. Showing error is safer.
+             }
+        }
+
+    // --- End Helper Functions ---
+           function initializePageForUser() {
+            if (!currentUsername) {
+                console.error("Initialization cannot proceed: Username not set.");
+                pageContentContainer.innerHTML = "<h2>Error: User context not available. Please login again.</h2>";
+                return;
+            }
+            console.log(`Initializing pagehome for user: ${currentUsername}`);
+
+            pageContentContainer = document.getElementById('pageContentContainer');
+            pageContentTemplate = document.getElementById('pageContentTemplate');
+            if (!pageContentContainer || !pageContentTemplate) {
+                 console.error("CRITICAL: Content container or template not found!");
+                 return;
+            }
+            pageContentContainer.innerHTML = ''; // Clear loading message
+            pageContentContainer.appendChild(pageContentTemplate.content.cloneNode(true));
+
+             fileInput = document.getElementById('csvfile');
+             fileListContainer = document.getElementById("fileListContainer");
+             profileListContainer = document.getElementById("profileListContainer");
+             columnDisplay = document.getElementById("columnDisplay");
+             displayProfileName = document.getElementById("displayProfileName");
+
+             if (!fileInput || !fileListContainer || !profileListContainer || !columnDisplay || !displayProfileName) {
+                 console.error("CRITICAL: One or more required UI elements not found after template injection.");
+                 pageContentContainer.innerHTML = "<h2>Error: UI elements failed to load.</h2>";
+                 return;
+             }
+             if(currentUsername){
+                 loadAndCacheUserData().then(success => {
+                    if (success) {
+                        console.log("Loading data from localStorage...");
+                        savedProfiles = getUserItem('savedProfiles', {});
+                        savedprofilesparent = getUserItem('savedprofilesparent', {});
+                        lastVisitedProfile = getUserItem('lastVisitedProfile', '');
+                        console.log("Data loaded:", { savedProfiles, savedprofilesparent, lastVisitedProfile });
+                        fileInput.addEventListener("change", prend_fichier);
+                        updateFileList(); // Renders the base profiles list
+                        if (lastVisitedProfile && savedProfiles[lastVisitedProfile]) {
+                            // If there was a last visited profile, display it and its children/columns
+                            console.log(`Restoring last visited profile: ${lastVisitedProfile}`);
+                            // Need to simulate the button click visually if desired
+                            if (lastVisitedProfile) {
+                                let last_profile_parent = lastVisitedProfile + "_parent";
+                                if(!savedprofilesparent[last_profile_parent]){
+                                    display_profile(lastVisitedProfile); // 🔹 Restaurer le dernier profil visité
+
+                                }
+                                else {
+                                    console.log("Profilenam parent: ",savedprofilesparent[last_profile_parent]);
+                                    display_profile(savedprofilesparent[last_profile_parent]);
+                                }
+                            }
+                        } else {
+                             // No last profile or it's invalid, reset display
+                             console.log("No valid last visited profile found.");
+                             displayProfileName.textContent = "(None Selected)";
+                             profileListContainer.innerHTML = ""; // Clear children list
+                             columnDisplay.innerHTML = "Please select a profile to display its columns.";
+                             lastVisitedProfile = ""; // Clear the potentially invalid stored value
+                             setUserItem("lastVisitedProfile", ""); // Update storage too
+                        }
+                         console.log("Pagehome initialization complete.")
+                    } else {
+                        // Error message already shown by loadAndCacheUserData
+                        console.error("Initial data load failed.");
+                    }
+                });
+            } else {
+                console.warn("Page initialized, but waiting for username message.");
+                // Optionally display a message like "Waiting for user authentication..."
+            }
+
+        }
+
+        // --- Listener for username from index.html ---
+         window.addEventListener('message', (event) => {
+             // Optional: Add origin check
+             if (event.data && event.data.action === 'setUser') {
+                 const receivedUsername = event.data.username;
+                 console.log(`pagehome.html received user message: ${receivedUsername}`);
+
+                 // Initialize only if username is new or wasn't set
+                 if (!currentUsername || currentUsername !== receivedUsername) {
+                      currentUsername = receivedUsername;
+                      // *** Trigger the main initialization ***
+                      initializePageForUser();
+                 } else {
+                      console.log(`User ${currentUsername} already set. Page should be initialized.`);
+                      // If the page was already initialized, you might decide if a refresh is needed.
+                      // For simplicity, we assume initializePageForUser handles idempotent setup.
+                      // If initializePageForUser was already called, this does nothing extra unless needed.
+                      if (!document.getElementById('table')) { // Check if content is missing
+                          console.log("Content seems missing, re-initializing...");
+                          initializePageForUser();
+                      }
+                 }
+             }
+         });
+         // --- End Listener ---
+
+// Fonction pour lire le fichier CSV
+function prend_fichier(event) {
+    const fichier = event.target.files[0]; // Récupérer le fichier sélectionné
+    if (fichier) {
+        const lire = new FileReader();
+        lire.onload = function (e) {
+            const content = e.target.result;
+            display_list_profiles(content, fichier); // Appeler affichage avec le contenu du fichier
+        };
+        lire.readAsText(fichier);
+    } else {
+        console.error("No files selected");
+    }
+}
+
+function detectDelimiter(content) {
+       const delimiters = [",", ";", "\t"]; // Liste des délimiteurs possibles
+       let detected = ",";
+       let maxCols = 0;
+
+       delimiters.forEach(delim => {
+           const numCols = content.split("\n")[0].split(delim).length;
+           if (numCols > maxCols) {
+               maxCols = numCols;
+               detected = delim;
+           }
+       });
+       return detected;
+}
+
+function normalizeLineEndings(content) {
+    // Remplace d'abord \r\n (Windows) en \n, puis remplace tous les \r en \n
+    console.log("Sucess repalce!");
+    return content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function isCSVFormat(content) {
+    const normalizedContent = normalizeLineEndings(content); // Normaliser le contenu
+    const delimiter = detectDelimiter(normalizedContent);
+    const lines = content.trim()
+        .split("\n")
+        .filter(line => line.trim() !== ""); // Retirer les lignes vides
+
+    const nbColumns = lines[0].split(delimiter).length; // Compter le nombre de colonnes de la première ligne
+
+    // Vérifier chaque ligne pour s'assurer qu'elles ont le même nombre de colonnes
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].split(delimiter).length !== nbColumns) {
+            return false; // Retourner faux si une ligne a un nombre de colonnes différent
+        }
+    }
+
+    return true; // Si toutes les lignes ont le même nombre de colonnes, c'est un CSV valide
+}
+
+// Ajoutez cette fonction pour charger les données depuis le localStorage
+function loadSavedData() {
+    if (!currentUsername) return; // Wait for username message
+    const savedProfiles = {};
+    const lastVisitedProfile = getUserItem('lastVisitedProfile', '');
+    console.log("Last visite profile: ",lastVisitedProfile);
+    // Si des profils sont sauvegardés, mettez à jour l'affichage
+    if (Object.keys(savedProfiles).length > 0) {
+        updateFileList();
+        if (lastVisitedProfile) {
+            let last_profile_parent = lastVisitedProfile + "_parent";
+            if(!savedprofilesparent[last_profile_parent]){
+                        display_profile(lastVisitedProfile); // 🔹 Restaurer le dernier profil visité
+
+            }
+            else {
+                display_profile(savedprofilesparent[last_profile_parent]);
+            }
+        }
+    }
+}
+
+// Appelez cette fonction lorsque la page est chargée
+window.onload = function () {
+    loadSavedData(); // Charger les données enregistrées
+    updateFileList(); // Charger la liste des fichiers
+};
+
+
+// Fonction pour afficher le contenu sous forme de tableau et ajouter le bouton avec le nom du fichier
+function display_list_profiles(contenu, fichier) {
+    if (!currentUsername) { alert("Cannot save profile: User context not loaded."); return; } // Check user context
+    if (!isCSVFormat(contenu)) {
+        alert("This is not a valid CSV file!");
+        return;
+    }
+
+    const normalizedContent = normalizeLineEndings(contenu); // Normaliser le contenu
+    const delimiter = detectDelimiter(normalizedContent); // Détecter le délimiteur
+    const lines = normalizedContent.split("\n").filter((line) => line.trim() !== ""); // Éviter les lignes vides
+
+    if (lines.length === 0) return;
+
+    // Stocker les lignes pour un accès ultérieur
+    rows = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const lignes_i = lines[i].split(delimiter); // Utiliser le délimiteur correct
+        rows.push(lignes_i); // Ajouter les lignes dans le tableau
+    }
+    delete_delimiter();
+    retirerLignesVides();
+    let totalData = {};
+
+    // Parcourir les index des colonnes sélectionnées et les remplir avec leurs données
+    for(let j = 0; j < rows[0].length; j++) {
+        totalData[rows[0][j]] = [];
+        for (let i = 1; i < rows.length; i++) { // Ignorer la première ligne (en-têtes)
+            if (rows[i] && rows[i][j] !== undefined) {
+                totalData[rows[0][j]].push(rows[i][j]);
+            }
+        }
+    }
+    savedProfiles[fichier.name] = totalData;
+    setUserItem('savedProfiles', savedProfiles);
+    console.log(savedProfiles);
+    updateFileList();
+}
+
+window.onload = function () {
+    loadSavedData(); // Charger les données enregistrées
+    updateFileList(); // Charger la liste des fichiers
+    const lastProfile = getUserItem('lastVisitedProfile', '');
+    console.log("Last visite: ",lastProfile);
+    if (lastProfile) {
+        let last_profile_parent = lastProfile + "_parent";
+        if(!savedprofilesparent[last_profile_parent]){
+                    display_profile(lastProfile); // 🔹 Restaurer le dernier profil visité
+
+        }
+        else {
+            display_profile(savedprofilesparent[last_profile_parent]);
+        }
+    }
+};
+
+
+// Fonction pour sauvegarder un profil
+function Save_profile() {
+    if (!currentUsername) { alert("Cannot save profile: User context not loaded."); return; } // Check user context
+    let profileNameparent = lastVisitedProfile ;
+    const profileName = prompt("Please enter a profile name :");
+    const profileNameData = lastVisitedProfile;
+    let selectedCols = Array.from(document.querySelectorAll('input.colSelect:checked')).map(input => parseInt(input.value));
+    // Vérifier si un nom a été saisi
+    if (!profileName || profileName.trim() === "") {
+        alert("Name of the profile cannot be empty !");
+        return;
+    }
+
+    if (selectedCols.length === 0) {
+        alert("Please select at least one column for the profile.");
+        return;
+    }
+
+    if( savedProfiles[profileName] ) {
+        alert("Profile exists. Please choose another profile name!");
+        return;
+    }
+
+    if (!profileNameData || profileNameData === "(Aucun)") {
+        alert("No profile selected. Please select a profile from the list!");
+        return;
+    }
+
+    // Récupérer les données du profil
+    const profileData = savedProfiles[profileNameData];
+    let rows = [];
+
+    console.log(profileData);
+    // Ajouter les noms des colonnes comme première ligne
+    const columnNames = Object.keys(profileData); // Obtenir les clés des colonnes
+    rows.push(columnNames); // Première ligne avec les noms des colonnes
+
+    // Trouver le nombre maximum de lignes nécessaire
+    const maxRows = Math.max(...Object.values(profileData).map(col => col.length));
+
+    // Ajouter les données ligne par ligne
+    for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
+        let row = columnNames.map(colName => profileData[colName][rowIndex] || ""); // Extraire les données par colonne
+        rows.push(row);
+    }
+
+    // Créer un objet pour stocker les colonnes sélectionnées et leurs valeurs
+    let selectedData = {};
+
+    // Parcourir les index des colonnes sélectionnées et les remplir avec leurs données
+    selectedCols.forEach(colIndex => {
+        selectedData[rows[0][colIndex]] = [];
+        for (let i = 1; i < rows.length; i++) { // Ignorer la première ligne (en-têtes)
+            if (rows[i] && rows[i][colIndex] !== undefined) {
+                selectedData[rows[0][colIndex]].push(rows[i][colIndex]);
+            }
+        }
+    });
+    savedProfiles[profileName] = selectedData;
+
+    let profile_parent = profileName + "_parent";
+    let profile_parent_parent = profileNameparent + "_parent";
+    console.log("profilename parent parent: ",profile_parent_parent);
+    while(savedprofilesparent[profile_parent_parent]) {
+        profileNameparent = savedprofilesparent[profile_parent_parent];
+        console.log("profilenameparent: ",profileNameparent);
+        profile_parent_parent = profileNameparent + "_parent";
+    }
+    savedprofilesparent[profile_parent] = profileNameparent;
+    setUserItem('savedprofilesparent', savedprofilesparent);
+    setUserItem('savedProfiles', savedProfiles);
+
+    console.log(savedprofilesparent);
+    console.log(savedProfiles);
+    loadSavedData(); // Charger les données enregistrées
+    updateFileList(); // Charger la liste des fichiers
+    let lastProfile = getUserItem("lastVisitedProfile",'');
+    console.log("Last visite: ",lastProfile);
+    if (lastProfile) {
+        let last_profile_parent = lastProfile + "_parent";
+        if(!savedprofilesparent[last_profile_parent]){
+                    display_profile(lastProfile); // 🔹 Restaurer le dernier profil visité
+
+        }
+        else {
+            display_profile(savedprofilesparent[last_profile_parent]);
+        }
+    }
+    Array.from(document.querySelectorAll('input[name="columns"]')).forEach((checkbox) => (checkbox.checked = false));
+    alert(`Profile "${profileName}" has been saved successfully!`);
+}
+
+function updateFileList() {
+    const fileListContainer = document.getElementById("fileListContainer");
+    if (!fileListContainer) {
+        return;
+    }
+
+    // Nettoyer le conteneur pour éviter les doublons
+    fileListContainer.innerHTML = "";
+
+    // Ajouter un bouton pour chaque profil dans `savedProfiles`
+    Object.keys(savedProfiles).forEach((profileName) => {
+        let profile_parent = profileName + "_parent";
+        if(!savedprofilesparent[profile_parent]) {
+            const profileButton = document.createElement("button");
+            profileButton.textContent = profileName;
+            profileButton.style.cssText = `
+                width: 100%;
+                padding: 10px;
+                margin: 5px 0;
+                color: white;
+                background-color: #007bff;
+                border: none;
+                border-radius: 30px;
+                font-size: 16px;
+                cursor: pointer;
+                transition: all 0.3s ease-in-out;
+                text-align: center;
+            `;
+
+            // Ajouter un événement 'click'
+        profileButton.onclick = () => {
+            // Réinitialiser la couleur de tous les boutons
+            Array.from(fileListContainer.children).forEach((btn) => {
+                btn.style.backgroundColor = "#007bff"; // Couleur par défaut
+            });
+
+            // Changer la couleur du bouton cliqué
+            profileButton.style.backgroundColor = "#28a745"; // Couleur par exemple 'vert'
+            display_profile(profileName);
+    };
+
+        // Ajouter le bouton au conteneur
+        fileListContainer.appendChild(profileButton);
+        }
+    });
+
+
+}
+
+function display_profile(profileName) {
+    const profileListContainer = document.getElementById("profileListContainer");
+    if (!profileName || profileName === "(Aucun)") {
+        alert("No profile selected. Please select a profile from the list!");
+        return;
+    }
+
+    if (!profileListContainer) {
+        return;
+    }
+
+    const visitedProfiles = new Set();
+    // Nettoyer le conteneur pour éviter les doublons
+    profileListContainer.innerHTML = "";
+
+    // Ajouter un bouton pour chaque profil dans `savedProfiles`
+    Object.keys(savedProfiles).forEach((childProfile) => {
+        if (visitedProfiles.has(childProfile)) return;
+        let profile_parent = childProfile + "_parent";
+        if (savedprofilesparent[profile_parent] === profileName) {
+            const profileButton = document.createElement("button");
+            profileButton.textContent = childProfile;
+            profileButton.style.cssText = `
+                width: 100%;
+                padding: 10px;
+                margin: 5px 0;
+                color: white;
+                background-color: #007bff;
+                border: none;
+                border-radius: 30px;
+                font-size: 16px;
+                cursor: pointer;
+                transition: all 0.3s ease-in-out;
+                text-align: center;
+            `;
+
+            // Ajouter un événement 'click'
+        profileButton.onclick = () => {
+            // Réinitialiser la couleur de tous les boutons
+            Array.from(profileListContainer.children).forEach((btn) => {
+                btn.style.backgroundColor = "#007bff"; // Couleur par défaut
+            });
+
+            // Changer la couleur du bouton cliqué
+            profileButton.style.backgroundColor = "#28a745"; // Couleur par exemple 'vert'
+            display_profile_colums(childProfile);
+        };
+
+            // Ajouter le bouton au conteneur
+            profileListContainer.appendChild(profileButton);
+        }
+    });
+        display_profile_colums(profileName);
+}
+
+// Fonction pour afficher toutes les colonnes du profil `name_profile`
+function display_profile_colums(profileName) {
+    const profileData = savedProfiles[profileName];
+    if (!profileData) {
+        return;
+    }
+
+    const columnHeaders = Object.keys(profileData); // Les colonnes (les clés)
+
+    // Obtenir l'en-tête de colonnes (première ligne du fichier)
+    let htmlColonnes = "<div class='display-columns'>";
+
+    for (let j = 0; j < columnHeaders.length; j++) {
+        // Générer chaque colonne
+        htmlColonnes += `
+        <div style="width: 80%;">
+            <input type="checkbox" class="colSelect" id="${j}" value="${j}">
+            <label for="${j}">${columnHeaders[j]}</label>
+        </div>`;
+    }
+    htmlColonnes += "</div>";
+    // Afficher les colonnes dans le conteneur de colonnes
+    document.getElementById("columnDisplay").innerHTML = htmlColonnes;
+    // Mettre à jour le nom du profil activement sélectionné
+    document.getElementById("displayProfileName").textContent = profileName;
+        // Mémoriser le dernier profil visité dans une variable globale
+    lastVisitedProfile = profileName;
+    // Optionnel : stocker dans le localStorage si vous voulez le rendre persistant
+    setUserItem("lastVisitedProfile",profileName);
+}
+
+function delete_profil() {
+    if (!currentUsername) {
+        alert("Cannot delete profile: User context not loaded.");
+        return;
+    }
+    // Ensure global elements are accessible if needed for reset
+    const displayProfileName = document.getElementById("displayProfileName");
+    const profileListContainer = document.getElementById("profileListContainer");
+    const columnDisplay = document.getElementById("columnDisplay");
+
+    const profileNameToDelete = lastVisitedProfile;
+
+    // Check if a profile is selected and if it actually exists
+    if (!profileNameToDelete || !savedProfiles[profileNameToDelete]) {
+        alert("Please select a valid profile to delete first.");
+        // Clear selection potentially if invalid profile was stored
+        if (profileNameToDelete && !savedProfiles[profileNameToDelete]) {
+             lastVisitedProfile = "";
+             setUserItem("lastVisitedProfile", "");
+             if(displayProfileName) displayProfileName.textContent = "(None Selected)";
+             if(profileListContainer) profileListContainer.innerHTML = "";
+             if(columnDisplay) columnDisplay.innerHTML = "Select a profile to display columns.";
+             updateFileList(); // Refresh list even on error correction
+        }
+        return;
+    }
+
+    // 1. Determine if it's a base profile and find children (for warning message)
+    let childrenToDelete = [];
+    let isBaseProfile = true; // Assume base unless found as a value in savedprofilesparent
+    const parentLinkKeyForDeleted = `${profileNameToDelete}_parent`; // Key if this profile IS a child
+
+    // Check if profileNameToDelete exists as a value (meaning it's someone's child)
+    for (const key in savedprofilesparent) {
+        if (savedprofilesparent[key] === profileNameToDelete) {
+             // This profile is a parent to the profile associated with 'key'
+             let childName = key.replace(/_parent$/, '');
+             if (savedProfiles[childName]) { // Check if child actually exists
+                 childrenToDelete.push(childName);
+             }
+        }
+        // Check if profileNameToDelete exists as a key (meaning it IS a child)
+        if (key === parentLinkKeyForDeleted) {
+            isBaseProfile = false; // It is a child, not a base profile
+        }
+    }
+
+
+    // 2. Find the parent's name *before* deleting relationships
+    let parentProfileName = null;
+    if (savedprofilesparent[parentLinkKeyForDeleted]) {
+        parentProfileName = savedprofilesparent[parentLinkKeyForDeleted];
+        console.log(`Profile "${profileNameToDelete}" has parent: "${parentProfileName}"`);
+    } else {
+         console.log(`Profile "${profileNameToDelete}" is a base profile or its parent link is missing.`);
+    }
+
+    // 3. Confirmation Dialog
+    let confirmMessage = `Are you sure you want to delete the profile: "${profileNameToDelete}"?`;
+    if (childrenToDelete.length > 0) {
+        // This implies it was treated as a base/parent profile
+        confirmMessage = `Deleting the profile "${profileNameToDelete}" will also delete its ${childrenToDelete.length} child selection(s):\n- ${childrenToDelete.join("\n- ")}\n\nDo you want to proceed?`;
+    }
+
+    if (!confirm(confirmMessage)) {
+        return; // User cancelled
+    }
+
+    // 4. Perform Deletions
+    console.log(`Deleting profile: "${profileNameToDelete}"`);
+
+    // Delete the main profile data
+    delete savedProfiles[profileNameToDelete];
+
+    // Delete its own parent link key (if it was a child)
+    if (savedprofilesparent[parentLinkKeyForDeleted]) {
+        delete savedprofilesparent[parentLinkKeyForDeleted];
+        console.log(`Removed parent link for "${profileNameToDelete}"`);
+    }
+
+    // Delete children profiles and their parent links (if it was a parent)
+    childrenToDelete.forEach(childName => {
+        console.log(`Deleting child profile: "${childName}"`);
+        delete savedProfiles[childName]; // Delete child data
+        delete savedprofilesparent[`${childName}_parent`]; // Delete child's parent link
+    });
+
+    // 5. Update localStorage
+    setUserItem('savedProfiles', savedProfiles);
+    setUserItem('savedprofilesparent', savedprofilesparent);
+    console.log("Updated localStorage after deletion.");
+    console.log("Remaining savedProfiles:", savedProfiles);
+    console.log("Remaining savedprofilesparent:", savedprofilesparent);
+
+
+    // 6. Determine Next Profile to Select
+    let profileToSelectAfterDelete = null;
+    if (parentProfileName && savedProfiles[parentProfileName]) {
+        // Parent exists and wasn't deleted, select the parent
+        profileToSelectAfterDelete = parentProfileName;
+        console.log(`Parent profile "${profileToSelectAfterDelete}" exists. Will select it.`);
+    } else {
+        console.log("No valid parent profile found to select. Resetting UI selection.");
+        // No parent, or parent doesn't exist anymore. Reset selection state.
+        lastVisitedProfile = ""; // Clear the global selection variable
+        setUserItem("lastVisitedProfile", ""); // Update storage
+    }
+
+    // 7. Update UI
+    // Always refresh the main list of base profiles
+    updateFileList();
+
+    if (profileToSelectAfterDelete) {
+        // Call display_profile for the parent. This will update the UI
+        // (name, children list, columns) and set lastVisitedProfile internally.
+        display_profile(profileToSelectAfterDelete);
+    } else {
+        // Explicitly reset UI elements if no parent is selected
+         if(displayProfileName) displayProfileName.textContent = "(None Selected)";
+         if(profileListContainer) profileListContainer.innerHTML = ""; // Clear children list
+         if(columnDisplay) columnDisplay.innerHTML = "Select a profile to display columns.";
+         // lastVisitedProfile was already cleared above
+    }
+
+    // 8. Alert User
+    alert(`Profile "${profileNameToDelete}" ${childrenToDelete.length > 0 ? 'and its child selection(s) ' : ''}deleted successfully!`);
+}
+
+function simlilar_profile() {
+    if (!currentUsername) {
+        alert("Cannot proceed: User context not loaded in pagehome.");
+        return;
+    }
+
+    let selectedColumns = Array.from(document.querySelectorAll('input.colSelect:checked')).map((input) =>
+        parseInt(input.value)
+    );
+    const profileName = lastVisitedProfile;
+
+    if (!profileName || profileName === "(Aucun)") {
+        alert("No profile selected. Please select a profile from the list!");
+        return;
+    }
+    const profileData = savedProfiles[profileName];
+    let data_transform = [];
+
+    if (!profileData) {
+        alert(`Profile "${profileName}" does not exist!`);
+        return;
+    }
+
+    // --- Data preparation logic (keep as is) ---
+    const columnNames = Object.keys(profileData);
+    data_transform.push(columnNames);
+    const maxRows = Math.max(...Object.values(profileData).map(col => col.length));
+    for (let rowIndex = 0; rowIndex < maxRows; rowIndex++) {
+        let row = columnNames.map(colName => profileData[colName][rowIndex] || "");
+        data_transform.push(row);
+    }
+    // --- End Data preparation ---
+
+    if (savedprofilesparent[profileName + "_parent"]) {
+        let length_data = data_transform[0].length;
+        if (selectedColumns.length === 0) {
+            selectedColumns = [...Array(length_data)].map((_, index) => index);
+        }
+    } else {
+        if (selectedColumns.length === 0) {
+            alert("Please select at least one column to Similarity!");
+            return;
+        }
+    }
+
+    // --- Save data to localStorage (keep as is) ---
+    console.log("Saving data for similarity:", {selectedColumns, data_transform, profileName});
+    setUserItem('selectedColumns', selectedColumns);
+    setUserItem('data_transform', data_transform);
+    setUserItem('profileName', profileName);
+    // --- End Save data ---
+
+
+    // --- Ask parent (index.html) to navigate ---
+    console.log("Requesting parent to load similarity.html");
+    window.parent.postMessage({
+        action: 'requestNavigation',
+        targetPage: 'similarity.html',
+        targetId: 'similarity' // The ID of the link in index.html's nav
+    }, '*');
+
+}
+
+function delete_delimiter() {
+    if (rows.length === 0) {
+        console.error("No data available for processing.");
+        return;
+    }
+
+    // Parcourir chaque ligne de données
+    for (let i = 0; i < rows.length; i++) {
+        for (let j = 0; j < rows[i].length; j++) {
+            // Supprimer les guillemets simples ou doubles autour de chaque cellule
+            rows[i][j] = rows[i][j].trim().replace(/^['"]|['"]$/g, '');
+        }
+    }
+
+    console.log("Delimiters successfully removed!");
+    console.log(rows); // Affiche les données nettoyées
+}
+function retirerLignesVides() {
+    if (rows.length === 0) {
+        console.error("No data available for processing.");
+        return;
+    }
+
+     rows = rows.filter(row => {
+        // Vérifier si au moins une des colonnes dans une ligne n'est pas vide
+        return row.some(value => value.trim() !== "");
+    });
+
+    console.log("Empty lines removed. Here is the updated data:");
+    console.log(rows);
+}
+        </script>
+</body>
+</html>
