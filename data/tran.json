@@ -12153,6 +12153,7 @@
     }
   },
   "savedprofilesparent": {
-    "profile1_parent": "Pain_python.csv"
+    "profile1_parent": "Pain_python.csv",
+    "profile2_parent": "Pain_python.csv"
   }
 }
